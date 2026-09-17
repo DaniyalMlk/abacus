@@ -16,13 +16,13 @@ exercised end to end, and covered by tests that run.
 
 ## Phase 2 — Tool surface over pricing and Greeks
 
-- [ ] JSON Schema 2020-12 validator covering the keywords the tool schemas use
-- [ ] Tool registry with input and output schemas, titles and annotations
-- [ ] `tools/list` with deterministic ordering, pagination and cache hints
-- [ ] `tools/call` returning both `content` and `structuredContent`
-- [ ] Structured, recoverable execution errors distinct from protocol errors
-- [ ] Domain validation that rejects economically meaningless inputs
-- [ ] European pricing and the full Greek set exposed as tools
+- [x] JSON Schema 2020-12 validator covering the keywords the tool schemas use
+- [x] Tool registry with input and output schemas, titles and annotations
+- [x] `tools/list` with deterministic ordering, pagination and cache hints
+- [x] `tools/call` returning both `content` and `structuredContent`
+- [x] Structured, recoverable execution errors distinct from protocol errors
+- [x] Domain validation that rejects economically meaningless inputs
+- [x] European pricing and the full Greek set exposed as tools
 
 ## Phase 3 — Implied volatility and the volatility surface
 
