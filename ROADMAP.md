@@ -5,14 +5,14 @@ exercised end to end, and covered by tests that run.
 
 ## Phase 1 — Protocol core
 
-- [ ] JSON-RPC 2.0 message parsing and serialisation with strict shape checks
-- [ ] Per-request `_meta` handling: protocol version, client info, client capabilities
-- [ ] `resultType` on every result; `complete` and `input_required` variants
-- [ ] MCP error codes, including the `-32020`..`-32099` reserved range
-- [ ] `server/discover` with supported versions, capabilities and server identity
-- [ ] Protocol version negotiation with `UnsupportedProtocolVersionError`
-- [ ] Capability gating with `MissingRequiredClientCapabilityError`
-- [ ] Method dispatch and a registry decoupled from transport
+- [x] JSON-RPC 2.0 message parsing and serialisation with strict shape checks
+- [x] Per-request `_meta` handling: protocol version, client info, client capabilities
+- [x] `resultType` on every result; `complete` and `input_required` variants
+- [x] MCP error codes, including the `-32020`..`-32099` reserved range
+- [x] `server/discover` with supported versions, capabilities and server identity
+- [x] Protocol version negotiation with `UnsupportedProtocolVersionError`
+- [x] Capability gating with `MissingRequiredClientCapabilityError`
+- [x] Method dispatch and a registry decoupled from transport
 
 ## Phase 2 — Tool surface over pricing and Greeks
 
