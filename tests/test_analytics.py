@@ -340,3 +340,17 @@ def test_no_tool_raises_on_a_degenerate_market(registry: ToolRegistry) -> None:
                 args["price"] = 20.0
             result = registry.call(tool.name, args)
             assert isinstance(result["isError"], bool)
+
+
+def test_an_arithmetic_fault_is_also_kept_inside_the_boundary(
+    registry: ToolRegistry,
+) -> None:
+    # The lattice tools divide by a time step, so a degenerate market raises
+    # ZeroDivisionError rather than the ValueError the closed-form routines
+    # raise. Both are statements about the inputs and neither may escape as an
+    # internal error, which is why the guard catches ArithmeticError too.
+    result = registry.call(
+        "price_american_lattice", {**BASE, "type": "put", "time": 1e-320}
+    )
+    assert result["isError"] is True
+    assert result["structuredContent"]["error"]["kind"] == "domain"
