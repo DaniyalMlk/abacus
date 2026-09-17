@@ -252,11 +252,10 @@ class RequestMeta:
             )
 
         log_level = raw.get(META_LOG_LEVEL)
-        if log_level is not None:
-            if not isinstance(log_level, str) or log_level not in LOG_LEVELS:
-                raise InvalidParams(
-                    f"_meta.{META_LOG_LEVEL} must be one of: {', '.join(LOG_LEVELS)}"
-                )
+        if log_level is not None and log_level not in LOG_LEVELS:
+            raise InvalidParams(f"_meta.{META_LOG_LEVEL} must be one of: {', '.join(LOG_LEVELS)}")
+        if log_level is not None and not isinstance(log_level, str):  # pragma: no cover
+            raise InvalidParams(f"_meta.{META_LOG_LEVEL} must be a string")
 
         token = raw.get(META_PROGRESS_TOKEN)
         if token is not None and not isinstance(token, str | int):

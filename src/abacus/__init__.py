@@ -64,10 +64,10 @@ __all__ = [
     "RequestMeta",
     "Server",
     "UnsupportedProtocolVersionError",
+    "__version__",
     "cacheable",
     "capabilities",
     "complete",
     "input_required",
     "parse_message",
-    "__version__",
 ]

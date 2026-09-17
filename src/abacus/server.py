@@ -177,7 +177,7 @@ class Server:
             return result_response(message.id, self.dispatch(message))
         except ProtocolError as exc:
             return error_response(message.id, exc.to_dict())
-        except Exception as exc:  # noqa: BLE001 - a handler fault must not kill the server
+        except Exception as exc:
             return error_response(message.id, InternalError(str(exc)).to_dict())
 
     def handle_json(self, text: str) -> dict[str, Any] | None:
