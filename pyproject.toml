@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "abacus-mcp"
+version = "0.1.0"
+description = "An MCP server exposing option and portfolio analytics over a validated numerical core."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "moneyness @ git+https://github.com/DaniyalMlk/moneyness.git",
+]
+
+[project.scripts]
+abacus = "abacus.cli:main"
+
+[project.optional-dependencies]
+# The server itself depends only on moneyness, which in turn has no
+# dependencies. Everything below is for checking the code, not running it.
+dev = ["pytest>=8", "mypy>=1.8", "ruff>=0.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src", "tests"]
+warn_unreachable = true
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
