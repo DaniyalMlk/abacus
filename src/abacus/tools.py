@@ -24,7 +24,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -192,7 +192,7 @@ class ToolRegistry:
     def __len__(self) -> int:
         return len(self._tools)
 
-    def __iter__(self) -> Iterable[Tool]:  # type: ignore[override]
+    def __iter__(self) -> Iterator[Tool]:
         return iter(self._tools.values())
 
     def page(self, cursor: str | None, size: int = PAGE_SIZE) -> tuple[list[Tool], str | None]:
