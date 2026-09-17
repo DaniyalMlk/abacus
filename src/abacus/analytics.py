@@ -355,6 +355,19 @@ def guard(handler: Callable[[dict[str, Any]], Any]) -> Callable[[dict[str, Any]]
             return handler(args)
         except ValueError as exc:
             raise DomainError(str(exc)) from exc
+        except ArithmeticError as exc:
+            # ZeroDivisionError, OverflowError and friends. A numerical routine
+            # divides by a time step or a volatility that a degenerate market
+            # has made zero. The exception text ("float division by zero") says
+            # nothing a caller could act on, so it is replaced rather than
+            # passed through — but it is still a statement about the inputs, and
+            # it must not escape as an internal error.
+            raise DomainError(
+                "this market is degenerate for the method requested: a quantity the "
+                "calculation divides by is zero. That usually means time, volatility, "
+                "spot or strike is zero, or so close to it that it underflowed. "
+                f"({type(exc).__name__}: {exc})"
+            ) from exc
 
     return wrapped
 
@@ -445,6 +458,6 @@ def register(registry: ToolRegistry) -> ToolRegistry:
 
 def default_registry() -> ToolRegistry:
     """A registry holding every tool this server exposes."""
-    from . import vol
+    from . import american, vol
 
-    return vol.register(register(ToolRegistry()))
+    return american.register(vol.register(register(ToolRegistry())))
