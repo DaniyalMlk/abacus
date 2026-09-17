@@ -164,8 +164,11 @@ def _validate(
         ref = schema["$ref"]
         if not isinstance(ref, str):
             raise SchemaError("$ref must be a string")
+        # In 2020-12 a `$ref` no longer replaces its siblings: the referenced
+        # schema and the keywords beside it both apply. Draft-07 ignored the
+        # siblings, so a schema that tightened a shared definition in place
+        # would silently lose the tightening under the older reading.
         _validate(value, _resolve(ref, root), path, root, out, depth - 1)
-        return
 
     _check_type(value, schema, path, out)
     _check_enum(value, schema, path, out)
