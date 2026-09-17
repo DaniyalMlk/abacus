@@ -48,16 +48,16 @@ exercised end to end, and covered by tests that run.
 
 ## Phase 6 — Transport and authorization hardening
 
-- [ ] stdio transport with framing and backward-compatibility probing
-- [ ] Streamable HTTP transport with a single POST endpoint
-- [ ] Standard request header validation and `HeaderMismatch` rejection
-- [ ] Origin validation and localhost binding by default
-- [ ] Request size limits, timeouts and schema resource bounds
+- [x] stdio transport with framing and backward-compatibility probing
+- [x] Streamable HTTP transport with a single POST endpoint
+- [x] Standard request header validation and `HeaderMismatch` rejection
+- [x] Origin validation and localhost binding by default
+- [x] Request size limits, timeouts and schema resource bounds
 
 ## Phase 7 — Conformance, documentation and continuous integration
 
 - [ ] Conformance suite driving the server through the wire format
 - [ ] Reference client used by the conformance suite
-- [ ] Command line entry point for both transports
-- [ ] README covering the tool surface and the design decisions
-- [ ] Continuous integration across supported Python versions with types and lint
+- [x] Command line entry point for both transports
+- [x] README covering the tool surface and the design decisions
+- [x] Continuous integration across supported Python versions with types and lint
