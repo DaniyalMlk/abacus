@@ -9,7 +9,6 @@ import pytest
 from abacus.errors import InvalidParams, InvalidRequest, UnsupportedProtocolVersionError
 from abacus.protocol import (
     META_CLIENT_CAPABILITIES,
-    META_CLIENT_INFO,
     META_LOG_LEVEL,
     META_PROGRESS_TOKEN,
     META_PROTOCOL_VERSION,
@@ -29,7 +28,6 @@ from abacus.protocol import (
 )
 
 from .conftest import meta, request
-
 
 # -- `_meta` key naming ---------------------------------------------------
 
@@ -118,7 +116,7 @@ def test_meta_round_trips_every_field() -> None:
             "_meta": meta(
                 client_capabilities={"elicitation": {}, "extensions": {"io.example/x": {}}},
                 client_info={"name": "probe", "version": "2.0.0", "title": "Probe"},
-                **{META_LOG_LEVEL: "warning", META_PROGRESS_TOKEN: "tok-1"},
+                extra={META_LOG_LEVEL: "warning", META_PROGRESS_TOKEN: "tok-1"},
             )
         }
     )
@@ -185,12 +183,12 @@ def test_client_info_is_optional() -> None:
 
 def test_unknown_log_level_is_rejected() -> None:
     with pytest.raises(InvalidParams, match="must be one of"):
-        RequestMeta.from_params({"_meta": meta(**{META_LOG_LEVEL: "loud"})})
+        RequestMeta.from_params({"_meta": meta(extra={META_LOG_LEVEL: "loud"})})
 
 
 def test_malformed_meta_key_is_rejected() -> None:
     with pytest.raises(InvalidParams, match="not a valid key name"):
-        RequestMeta.from_params({"_meta": meta(**{"has space": 1})})
+        RequestMeta.from_params({"_meta": meta(extra={"has space": 1})})
 
 
 @pytest.mark.parametrize("token", [True, False, 1.5, [], {}])
@@ -198,11 +196,11 @@ def test_progress_token_must_be_a_string_or_integer(token: Any) -> None:
     # `True` is an `int` in Python; a JSON boolean is not a valid token, so the
     # check has to exclude it explicitly.
     with pytest.raises(InvalidParams, match="progressToken"):
-        RequestMeta.from_params({"_meta": meta(**{META_PROGRESS_TOKEN: token})})
+        RequestMeta.from_params({"_meta": meta(extra={META_PROGRESS_TOKEN: token})})
 
 
 def test_integer_progress_token_is_accepted() -> None:
-    parsed = RequestMeta.from_params({"_meta": meta(**{META_PROGRESS_TOKEN: 7})})
+    parsed = RequestMeta.from_params({"_meta": meta(extra={META_PROGRESS_TOKEN: 7})})
     assert parsed.progress_token == 7
 
 
