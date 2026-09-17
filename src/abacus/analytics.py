@@ -14,6 +14,7 @@ and nothing downstream would ever know.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from moneyness import (
@@ -242,21 +243,42 @@ def price_payload(args: dict[str, Any]) -> dict[str, Any]:
     option = option_type(args)
     value = price(inputs, option)
     floor = intrinsic(inputs, option)
-    first, second = d1_d2(inputs)
-    return {
+    payload = {
         "price": value,
         "forward": forward(inputs),
         "intrinsic": floor,
         "timeValue": value - floor,
-        "d1": first,
-        "d2": second,
         "model": "generalised Black-Scholes-Merton",
     }
+    # At expiry, or with zero volatility, spot or strike, the price is still
+    # well defined — it is the limit, and the library returns it — but the two
+    # standardised log-moneyness arguments are not. They are omitted rather than
+    # filled with an infinity or a zero, both of which would read as a real
+    # number to whatever consumed them. The output schema does not require them
+    # for exactly this reason.
+    if not inputs.is_degenerate:
+        first, second = d1_d2(inputs)
+        payload["d1"] = first
+        payload["d2"] = second
+    return payload
 
 
 def greeks_payload(args: dict[str, Any]) -> dict[str, Any]:
     inputs = build_inputs(args)
     option = option_type(args)
+    if inputs.is_degenerate:
+        # Unlike the price, which has a limit at expiry, the sensitivities do
+        # not exist here: the payoff is kinked at the strike and the derivative
+        # is undefined at the kink. Refusing and saying what is still available
+        # beats returning an infinity, a zero, or a stack trace — each of which
+        # would be read downstream as a real sensitivity.
+        raise DomainError(
+            "Greeks are undefined when time, volatility, spot or strike is zero: "
+            "the payoff is kinked at the strike and the derivative does not exist "
+            "there. The price itself is still defined as a limit and is available "
+            "from price_european_option.",
+            field="time" if inputs.time == 0 else "vol",
+        )
     return {
         "delta": delta(inputs, option),
         "gamma": gamma(inputs),
@@ -313,6 +335,30 @@ def bounds_payload(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def guard(handler: Callable[[dict[str, Any]], Any]) -> Callable[[dict[str, Any]], Any]:
+    """Turn a library domain complaint into a recoverable tool error.
+
+    ``moneyness`` raises :class:`ValueError` exactly when inputs fall outside
+    the domain of what it is being asked to compute — an expired option has no
+    implied volatility, a kinked payoff has no derivative — and its messages are
+    written to explain which. Left alone those would surface as ``-32603``,
+    which tells the caller only that something broke inside the server.
+
+    Converting them here means a caller gets the library's own explanation in
+    the same shape as every other refusal. It also means the checks stay in one
+    place: the tools are not obliged to re-derive the domain of each function
+    they call, and a tool added later cannot forget to.
+    """
+
+    def wrapped(args: dict[str, Any]) -> Any:
+        try:
+            return handler(args)
+        except ValueError as exc:
+            raise DomainError(str(exc)) from exc
+
+    return wrapped
+
+
 def register(registry: ToolRegistry) -> ToolRegistry:
     """Add the pricing and Greek tools to ``registry``."""
 
@@ -328,7 +374,7 @@ def register(registry: ToolRegistry) -> ToolRegistry:
         input_schema=_option_schema(),
         output_schema=_PRICE_OUTPUT,
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(price_payload)
+    )(guard(price_payload))
 
     registry.register(
         "european_option_greeks",
@@ -343,7 +389,7 @@ def register(registry: ToolRegistry) -> ToolRegistry:
         input_schema=_option_schema(),
         output_schema=_GREEKS_OUTPUT,
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(greeks_payload)
+    )(guard(greeks_payload))
 
     registry.register(
         "european_option_analytics",
@@ -354,7 +400,7 @@ def register(registry: ToolRegistry) -> ToolRegistry:
         ),
         input_schema=_option_schema(),
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(analytics_payload)
+    )(guard(analytics_payload))
 
     registry.register(
         "put_call_parity",
@@ -366,7 +412,7 @@ def register(registry: ToolRegistry) -> ToolRegistry:
         ),
         input_schema=_option_schema(with_type=False),
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(parity_payload)
+    )(guard(parity_payload))
 
     quote_schema = _option_schema()
     quote_properties = dict(quote_schema["properties"])
@@ -392,7 +438,7 @@ def register(registry: ToolRegistry) -> ToolRegistry:
             "additionalProperties": False,
         },
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(bounds_payload)
+    )(guard(bounds_payload))
 
     return registry
 
