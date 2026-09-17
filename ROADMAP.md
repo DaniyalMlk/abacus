@@ -26,11 +26,11 @@ exercised end to end, and covered by tests that run.
 
 ## Phase 3 — Implied volatility and the volatility surface
 
-- [ ] Implied volatility tool with bracketing diagnostics and no-solution reporting
-- [ ] Surface calibration tool over a quote set
-- [ ] Surface representation that stays legible when read as text
-- [ ] Arbitrage diagnostics reported as data, not prose
-- [ ] Local volatility extraction exposed as a tool
+- [x] Implied volatility tool with bracketing diagnostics and no-solution reporting
+- [x] Surface calibration tool over a quote set
+- [x] Surface representation that stays legible when read as text
+- [x] Arbitrage diagnostics reported as data, not prose
+- [x] Local volatility extraction exposed as a tool
 
 ## Phase 4 — American exercise
 
