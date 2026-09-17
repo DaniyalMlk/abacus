@@ -34,10 +34,10 @@ exercised end to end, and covered by tests that run.
 
 ## Phase 4 — American exercise
 
-- [ ] Lattice pricing tool with step control and convergence reporting
-- [ ] Closed-form American approximation tool
-- [ ] Early exercise boundary exposed as a queryable series
-- [ ] Method selection reported alongside every American price
+- [x] Lattice pricing tool with step control and convergence reporting
+- [x] Closed-form American approximation tool
+- [x] Early exercise boundary exposed as a queryable series
+- [x] Method selection reported alongside every American price
 
 ## Phase 5 — Position book
 

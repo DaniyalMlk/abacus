@@ -43,6 +43,9 @@ To register it with a client that launches servers over stdio:
 | `fit_volatility_slice` | Fit a raw SVI slice, with fit quality and a butterfly check |
 | `fit_volatility_surface` | Fit a surface, with both no-arbitrage conditions checked |
 | `local_volatility` | Dupire local volatilities, including where the identity has no answer |
+| `price_american_lattice` | American price on a lattice, with convergence reporting |
+| `price_american_closed_form` | Bjerksund-Stensland 2002, labelled as an approximation |
+| `american_exercise_boundary` | The early-exercise boundary as a series |
 
 Conventions, which are also stated in the server's instructions and in every
 schema description: volatilities and rates are decimal fractions, so 20% is
@@ -139,6 +142,28 @@ attached, rather than left to be inferred. They are scanned *between* the quoted
 maturities as well as at them, because quoted slices are usually fitted to be
 admissible and interpolation is where the condition quietly stops holding.
 
+### A numerical answer carries how it was produced
+
+An American price is the output of a method, not a formula, so its error is
+invisible in the number. A lattice price at 64 layers and the same price at 4096
+layers are different numbers, and a tool returning a bare float invites a caller
+to treat a discretisation artefact as a market fact. So every American valuation
+carries the method, the resolution, the early-exercise premium, and on request a
+ladder of prices as the grid doubles, with the last change quoted as an error
+*estimate* — described as such, because nothing here proves a bound.
+
+Two European prices are reported beside it, analytic and on-lattice, because the
+premium is the lattice-internal difference: the discretisation error is common
+to both legs and largely cancels, which makes it the better estimate. The cost
+is that `price - europeanPrice` does not reproduce it, so both are given rather
+than leaving a reader to find the discrepancy and distrust all three.
+
+The boundary read-out carries a similar caveat. On a binomial lattice it
+alternates between two values one node apart, because consecutive layers sample
+interleaved node grids of opposite parity — the true boundary is monotone, and
+the wobble is the discretisation rather than the option. The tool says so and
+points at the trinomial lattice, which has no such parity.
+
 ### Header validation is a security control, not a formality
 
 Streamable HTTP mirrors selected body fields into headers so intermediaries can
@@ -162,7 +187,7 @@ endpoint that was never there.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 337 tests
+pytest          # 367 tests
 mypy --strict
 ruff check .
 ```
