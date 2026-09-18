@@ -3,18 +3,23 @@
 ``abacus stdio`` is what an MCP client launches. ``abacus http`` runs the same
 server over Streamable HTTP. ``abacus tools`` prints the tool surface, which is
 the quickest way to see what the server offers without speaking the protocol at
-it.
+it. ``abacus conform`` runs the conformance suite — against this server in
+process by default, and against a launched command or a running endpoint when
+told to, since the suite tests the specification rather than this code.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import sys
 from collections.abc import Sequence
 
 from . import __version__
 from .analytics import default_registry
+from .client import Client, HttpTransport, InProcessTransport, StdioTransport, Transport
+from .conformance import run as run_conformance
 from .protocol import PROTOCOL_VERSION
 from .server import Server, capabilities
 from .tools import ToolRegistry, install
@@ -76,7 +81,53 @@ def _parser() -> argparse.ArgumentParser:
     tools = sub.add_parser("tools", help="print the tool surface and exit")
     tools.add_argument("--schemas", action="store_true", help="include the full JSON schemas")
 
+    conform = sub.add_parser(
+        "conform",
+        help="run the conformance suite; in process unless a target is named",
+    )
+    target = conform.add_mutually_exclusive_group()
+    target.add_argument(
+        "--stdio",
+        metavar="COMMAND",
+        help='launch a server and drive it over stdio, e.g. --stdio "abacus stdio"',
+    )
+    target.add_argument(
+        "--http",
+        metavar="URL",
+        help="drive a running Streamable HTTP endpoint, e.g. --http http://127.0.0.1:8000/mcp",
+    )
+    conform.add_argument("--json", action="store_true", help="emit the report as JSON")
+
     return parser
+
+
+def _conform(args: argparse.Namespace) -> int:
+    """Run the conformance suite against whichever target was named.
+
+    The HTTP checks are skipped rather than failed when the target is not an
+    endpoint, because a server reached over stdio is not required to have one.
+    """
+    http: HttpTransport | None = None
+    transport: Transport
+    if args.http:
+        http = HttpTransport(args.http)
+        transport = http
+    elif args.stdio:
+        transport = StdioTransport(shlex.split(args.stdio))
+    else:
+        transport = InProcessTransport(build_server())
+
+    client = Client(transport)
+    try:
+        report = run_conformance(client, http=http)
+    finally:
+        client.close()
+
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2))
+    else:
+        print(report.render())
+    return 0 if report.ok else 1
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -108,6 +159,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         finally:
             httpd.server_close()
         return 0
+
+    if args.command == "conform":
+        return _conform(args)
 
     if args.command == "tools":
         registry = default_registry()
