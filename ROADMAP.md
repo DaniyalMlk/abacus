@@ -41,10 +41,10 @@ exercised end to end, and covered by tests that run.
 
 ## Phase 5 — Position book
 
-- [ ] Position and book model with an explicit server-minted handle
-- [ ] Aggregate Greeks across a book
-- [ ] Scenario grids over spot and volatility
-- [ ] Handle lifetime, expiry and recovery errors
+- [x] Position and book model with an explicit server-minted handle
+- [x] Aggregate Greeks across a book
+- [x] Scenario grids over spot and volatility
+- [x] Handle lifetime, expiry and recovery errors
 
 ## Phase 6 — Transport and authorization hardening
 

@@ -46,6 +46,11 @@ To register it with a client that launches servers over stdio:
 | `price_american_lattice` | American price on a lattice, with convergence reporting |
 | `price_american_closed_form` | Bjerksund-Stensland 2002, labelled as an approximation |
 | `american_exercise_boundary` | The early-exercise boundary as a series |
+| `open_position_book` | Assemble option and underlying positions into a book, returning a handle |
+| `describe_position_book` | Read a book back from its handle |
+| `amend_position_book` | Add or remove legs, or move the market, returning a new handle |
+| `position_book_greeks` | Total value and net sensitivities, with the per-leg breakdown |
+| `position_book_scenarios` | Reprice a book across a grid of spot and volatility shifts |
 
 Conventions, which are also stated in the server's instructions and in every
 schema description: volatilities and rates are decimal fractions, so 20% is
@@ -164,6 +169,50 @@ interleaved node grids of opposite parity — the true boundary is monotone, and
 the wobble is the discretisation rather than the option. The tool says so and
 points at the trinomial lattice, which has no such parity.
 
+### A book is carried by its handle, not stored behind one
+
+A position book is state, and this revision has nowhere to keep it. The obvious
+implementation — a dictionary on the server, keyed by a random string handed
+back to the caller — fails three ways that have nothing to do with taste. It
+reintroduces the session the revision removed, and with no session scope the
+book is reachable by whoever presents the key. It grows without bound, because
+nothing in the protocol tells a server that a caller has finished. And it breaks
+across processes, since a handle minted by one worker is unknown to the next.
+
+So the handle *contains* the book: canonical JSON, compressed, and authenticated
+with a truncated HMAC-SHA256 that is checked in constant time before anything is
+decompressed. The server stores nothing and verifies everything, which disposes
+of all three problems at once.
+
+The trade is stated rather than buried. The payload is signed, not encrypted, so
+the caller can read it — acceptable because it is the caller's own book, and a
+reason nothing else may be put in there. It cannot be altered, because an edited
+handle fails its MAC. It is bounded in size, so a book too large to encode is
+refused when it is opened rather than minting something that fails on use. And
+the key lives for the life of the process, which is why a handle that fails its
+check is reported as *unrecognised* rather than expired: a caller seeing that
+after a working call has learned something true about the server.
+
+Books are therefore immutable. Amending one mints a new handle and leaves the
+old one working until it expires, and the result says so — the server holds no
+record of either and could not revoke the old one if it claimed to.
+
+### An aggregate says which legs it covers
+
+A leg that has expired, or that carries no volatility, has no derivative: the
+payoff is kinked and there is nothing to differentiate. Contributing a zero for
+it would report a book as flat in precisely the case where part of it has no
+delta at all, and nothing downstream could tell.
+
+Such legs are priced into the total — the price is a limit and exists — but
+excluded from the aggregate Greeks, which then come back with `complete: false`,
+the indices of the excluded legs, and a sentence saying the aggregate covers the
+remaining legs only.
+
+Scenario grids are labelled for the reason surfaces are. A spot-versus-vol grid
+is square often enough that a transposed reading still looks plausible, so every
+row states its volatility shift and every cell states the spot it was priced at.
+
 ### Header validation is a security control, not a formality
 
 Streamable HTTP mirrors selected body fields into headers so intermediaries can
@@ -187,7 +236,7 @@ endpoint that was never there.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 367 tests
+pytest          # 449 tests
 mypy --strict
 ruff check .
 ```
