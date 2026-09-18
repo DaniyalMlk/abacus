@@ -148,9 +148,13 @@ class InProcessTransport:
         # letting a server's response alias the request that produced it.
         decoded = json.loads(json.dumps(payload))
         raw = self.server.handle(decoded)
-        if not expect_response:
-            return Exchange(request=payload, raw=None)
-        return Exchange(request=payload, raw=json.loads(json.dumps(raw)) if raw else None)
+        # Returned even when no response was expected. A server that answers a
+        # notification is breaking a rule, and a transport that swallowed the
+        # answer would make the check for that rule vacuous.
+        del expect_response
+        return Exchange(
+            request=payload, raw=json.loads(json.dumps(raw)) if raw is not None else None
+        )
 
     def close(self) -> None:
         return None

@@ -429,6 +429,18 @@ def _a_notification_is_never_answered(context: Context) -> None:
         exchange.raw is None or exchange.raw == "",
         f"a notification must not be answered; got {exchange.raw!r}",
     )
+    # On a stream-framed transport a stray answer is not visible at the point it
+    # is written — it is visible when it is read in place of the next response.
+    # So the check does not stop at looking: it sends a request afterwards and
+    # requires the answer to be the answer to that request.
+    following = context.client.request("server/discover", ident="after-a-notification")
+    expect(
+        isinstance(following.raw, dict)
+        and following.raw.get("id") == "after-a-notification",
+        "the response after a notification was not the response to the request "
+        f"that followed it, so something was written for the notification: "
+        f"{following.raw!r}",
+    )
 
 
 def _no_error_uses_a_retired_or_reserved_code(context: Context) -> None:
