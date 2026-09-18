@@ -71,7 +71,7 @@ class Exchange:
     have thrown away.
     """
 
-    request: dict[str, Any]
+    request: Any
     raw: Any
     status: int | None = None
     headers: Mapping[str, str] = field(default_factory=dict)
@@ -118,8 +118,14 @@ def encode_header_value(value: str) -> str:
 class Transport(Protocol):
     """What the client needs from whatever carries its messages."""
 
-    def send(self, payload: dict[str, Any], *, expect_response: bool) -> Exchange:
-        """Send one message and return the exchange, empty for a notification."""
+    def send(self, payload: Any, *, expect_response: bool) -> Exchange:
+        """Send one message and return the exchange, empty for a notification.
+
+        ``payload`` is deliberately untyped. A client that could only send
+        well-formed messages could not ask a server how it handles a malformed
+        one, and several requirements of the specification are about exactly
+        that — a batch, a null id, a body that is not an object at all.
+        """
 
     def close(self) -> None:
         """Release whatever the transport holds."""
@@ -136,7 +142,7 @@ class InProcessTransport:
     def __init__(self, server: Any) -> None:
         self.server = server
 
-    def send(self, payload: dict[str, Any], *, expect_response: bool) -> Exchange:
+    def send(self, payload: Any, *, expect_response: bool) -> Exchange:
         # Round-tripped through JSON so the client sees what a wire transport
         # would: tuples flattened to arrays, and no shared mutable objects
         # letting a server's response alias the request that produced it.
@@ -172,7 +178,7 @@ class StdioTransport:
             )
         return self._process
 
-    def send(self, payload: dict[str, Any], *, expect_response: bool) -> Exchange:
+    def send(self, payload: Any, *, expect_response: bool) -> Exchange:
         process = self._ensure()
         assert process.stdin is not None and process.stdout is not None
         try:
@@ -249,21 +255,26 @@ class HttpTransport:
         self.extra_headers = dict(extra_headers or {})
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
-    def headers_for(self, payload: dict[str, Any]) -> dict[str, str]:
+    def headers_for(self, payload: Any) -> dict[str, str]:
         """Build the routing headers that mirror this body.
 
         They mirror rather than duplicate: the server refuses a request whose
         headers disagree with its body, so these are derived from the payload
         and never passed in alongside it.
+
+        A payload that is not an object gets the protocol version and nothing
+        else. There is no method to mirror, and inventing one would turn a
+        server's answer about the malformed body into an answer about a header
+        the client made up.
         """
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
-        params = payload.get("params")
+        params = payload.get("params") if isinstance(payload, dict) else None
         meta = params.get("_meta") if isinstance(params, dict) else None
         version = meta.get(META_PROTOCOL_VERSION) if isinstance(meta, dict) else None
         headers["MCP-Protocol-Version"] = (
             version if isinstance(version, str) else PROTOCOL_VERSION
         )
-        method = payload.get("method")
+        method = payload.get("method") if isinstance(payload, dict) else None
         if isinstance(method, str):
             headers["Mcp-Method"] = method
             source = NAME_SOURCE.get(method)
@@ -274,7 +285,7 @@ class HttpTransport:
         headers.update(self.extra_headers)
         return headers
 
-    def send(self, payload: dict[str, Any], *, expect_response: bool) -> Exchange:
+    def send(self, payload: Any, *, expect_response: bool) -> Exchange:
         body = json.dumps(payload, separators=(",", ":")).encode()
         request = urllib.request.Request(
             self.url, data=body, headers=self.headers_for(payload), method="POST"
@@ -291,9 +302,7 @@ class HttpTransport:
             raise TransportError(f"could not reach {self.url}: {exc.reason}") from exc
 
     @staticmethod
-    def _exchange(
-        payload: dict[str, Any], status: int, headers: Any, body: bytes
-    ) -> Exchange:
+    def _exchange(payload: Any, status: int, headers: Any, body: bytes) -> Exchange:
         raw: Any = None
         if body:
             try:
@@ -400,10 +409,11 @@ class Client:
 
     # -- sending -----------------------------------------------------------
 
-    def send(self, message: dict[str, Any]) -> Exchange:
+    def send(self, message: Any) -> Exchange:
         """Send a message that is already built, however malformed it may be."""
-        exchange = self.transport.send(message, expect_response="id" in message)
-        if "id" in message:
+        wants_response = isinstance(message, dict) and "id" in message
+        exchange = self.transport.send(message, expect_response=wants_response)
+        if wants_response:
             self._check_framing(exchange)
         return exchange
 
@@ -435,7 +445,7 @@ class Client:
             raise TransportError(
                 f"a response carries exactly one of result and error: {raw!r}"
             )
-        sent = exchange.request.get("id")
+        sent = exchange.request.get("id") if isinstance(exchange.request, dict) else None
         if "id" in raw and raw["id"] != sent:
             raise TransportError(f"response id {raw['id']!r} does not match request {sent!r}")
 
