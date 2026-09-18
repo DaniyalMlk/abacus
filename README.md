@@ -18,6 +18,7 @@ pip install git+https://github.com/DaniyalMlk/abacus.git
 abacus stdio          # what an MCP client launches
 abacus http           # Streamable HTTP on 127.0.0.1:8000/mcp
 abacus tools          # print the tool surface and exit
+abacus conform        # run the conformance suite against this server
 ```
 
 To register it with a client that launches servers over stdio:
@@ -56,6 +57,36 @@ Conventions, which are also stated in the server's instructions and in every
 schema description: volatilities and rates are decimal fractions, so 20% is
 `0.2`; time is a year fraction, so thirty days is about `0.082`; log-moneyness
 is measured on the forward as `log(strike / forward)`.
+
+## Checking a server against the specification
+
+The conformance suite drives a server through the wire format and reports on
+requirements of the specification — not of this code — so it is meaningful
+pointed somewhere else:
+
+```bash
+abacus conform                                   # this server, in process
+abacus conform --stdio "abacus stdio"            # a launched command
+abacus conform --http http://127.0.0.1:8000/mcp  # a running endpoint
+abacus conform --http ... --json                 # machine-readable
+```
+
+It exits non-zero on a failure, so it works as a gate rather than only as a
+report, and CI runs it over both transports and against the built wheel.
+
+Checks cover discovery, `resultType` and server identity on every result, cache
+hints on list results, version negotiation, the error-code allocation rules, the
+distinction between a protocol error and a tool execution error, and — on
+Streamable HTTP — header validation, the Base64 sentinel, and the verbs and
+headers this revision retired. A requirement that cannot be tested against a
+given server reports `skip` with the reason; counting an untested requirement as
+satisfied would make the whole suite worthless.
+
+The suite is itself tested by injecting one defect at a time into this server —
+the handshake still implemented, `resultType` missing, a retired error code, an
+execution failure escalated to a JSON-RPC error — and requiring that the check
+written for that requirement is the one that turns red. Passing a healthy server
+proves very little; failing a broken one on the right check is the evidence.
 
 ## Design
 
@@ -213,6 +244,18 @@ Scenario grids are labelled for the reason surfaces are. A spot-versus-vol grid
 is square often enough that a transposed reading still looks plausible, so every
 row states its volatility shift and every cell states the spot it was priced at.
 
+### The reference client implements this revision and nothing else
+
+There is no `initialize`, no session header, no fallback to an older shape, and
+no accommodation for a server that answers the way servers used to. That is the
+point: MCP moved, most published guidance still describes the stateful form, and
+a client that quietly tolerated it would make a non-conforming server look fine.
+
+It is also deliberately thin on judgement. It checks only the JSON-RPC framing
+that must hold for a response to be matched to its request, and returns
+everything else untouched — because a client that raised on a missing
+`resultType` could not report on one.
+
 ### Header validation is a security control, not a formality
 
 Streamable HTTP mirrors selected body fields into headers so intermediaries can
@@ -236,15 +279,16 @@ endpoint that was never there.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 449 tests
+pytest          # 507 tests
 mypy --strict
 ruff check .
 ```
 
 Continuous integration runs the suite on Python 3.10 through 3.13, type-checks
-and lints, and installs the built wheel into a clean environment to confirm the
-entry point answers a real request — a wheel that imports but cannot serve is
-not a working server.
+and lints, runs the conformance suite over both transports, and installs the
+built wheel into a clean environment to confirm the entry point answers a real
+request and passes conformance — a wheel that imports but cannot serve is not a
+working server.
 
 Prices and Greeks are checked against the library exactly and, independently,
 against finite differences of the prices the pricing tool itself returns. Those

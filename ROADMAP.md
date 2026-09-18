@@ -56,8 +56,8 @@ exercised end to end, and covered by tests that run.
 
 ## Phase 7 — Conformance, documentation and continuous integration
 
-- [ ] Conformance suite driving the server through the wire format
-- [ ] Reference client used by the conformance suite
+- [x] Conformance suite driving the server through the wire format
+- [x] Reference client used by the conformance suite
 - [x] Command line entry point for both transports
 - [x] README covering the tool surface and the design decisions
 - [x] Continuous integration across supported Python versions with types and lint

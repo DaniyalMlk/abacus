@@ -25,6 +25,38 @@ jobs:
       - name: Test
         run: pytest -q
 
+  conformance:
+    name: Conformance over both transports
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Over stdio
+        # The suite exits non-zero on a failure, so it is a gate rather than a
+        # report. Run against the launched entry point, not in process, so the
+        # framing is exercised too.
+        run: abacus conform --stdio "abacus stdio"
+      - name: Over Streamable HTTP
+        # Backgrounded and polled: the HTTP-scoped checks are the ones that
+        # cover the routing headers and the verbs this revision retired, and
+        # they are skipped rather than run without an endpoint to drive.
+        run: |
+          abacus http --port 8123 &
+          # Waiting for the port to answer at all, not for a 2xx: a GET on the
+          # endpoint is 405 by design, so `curl -f` here would never succeed and
+          # the loop would silently spin out its whole budget before carrying on.
+          for _ in $(seq 1 40); do
+            curl -s -o /dev/null http://127.0.0.1:8123/mcp && break
+            sleep 0.25
+          done
+          abacus conform --http http://127.0.0.1:8123/mcp
+
   checks:
     name: Types and lint
     runs-on: ubuntu-latest
@@ -66,3 +98,5 @@ jobs:
           printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}' \
             | /tmp/check/bin/abacus stdio \
             | python -c "import sys, json; r = json.load(sys.stdin)['result']; assert r['supportedVersions'] == ['2026-07-28'], r; print('discover ok')"
+      - name: The installed wheel passes the conformance suite
+        run: /tmp/check/bin/abacus conform --stdio "/tmp/check/bin/abacus stdio"
