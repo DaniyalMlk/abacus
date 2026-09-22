@@ -61,3 +61,48 @@ exercised end to end, and covered by tests that run.
 - [x] Command line entry point for both transports
 - [x] README covering the tool surface and the design decisions
 - [x] Continuous integration across supported Python versions with types and lint
+
+## Phase 8 — Installable in one line
+
+- [ ] Release metadata, classifiers and keywords on the server and on each library it depends on
+- [ ] Tag-driven release workflow using trusted publishing, so no credential is stored
+- [ ] Depend on released versions rather than repository URLs, which package indexes reject
+- [ ] `uvx abacus-mcp` and `pip install abacus-mcp` verified from a clean environment
+- [ ] Registration snippets for the clients people actually use
+
+## Phase 9 — Portfolio risk tools
+
+- [ ] Value at risk and expected shortfall, parametric and historical, with the method named in the result
+- [ ] Shrinkage covariance from a returns matrix, reporting the shrinkage intensity it chose
+- [ ] Risk contributions and concentration, so the answer says where the risk is
+- [ ] Drawdown and tail statistics
+- [ ] Returns handles, so a matrix is uploaded once and reused across calls
+
+## Phase 10 — Curve and bond tools
+
+- [ ] Discount curve bootstrapping from deposits, futures and swaps
+- [ ] Bond analytics: price, yield, duration, convexity
+- [ ] Key rate risk and option-adjusted spread
+- [ ] Curve handles, so a bootstrapped curve is reused rather than rebuilt per call
+
+## Phase 11 — Execution and backtest-validation tools
+
+- [ ] Implementation shortfall decomposition over an order, its fills and the market
+- [ ] Optimal execution trajectory and the cost-risk frontier
+- [ ] Deflated Sharpe ratio, minimum track record length and effective trial count
+- [ ] Probability of backtest overfitting and the test for superior predictive ability
+- [ ] Refusals rather than numbers when the inputs cannot support one
+
+## Phase 12 — The skill
+
+- [ ] A packaged skill covering when to reach for which tool and the conventions they share
+- [ ] Worked transcripts: pricing a book, sizing its risk, judging a backtest
+- [ ] A budget on the tool surface, so loading it stays cheap as it grows
+- [ ] The skill checked against the server it describes, in continuous integration
+
+## Phase 13 — Documentation
+
+- [ ] A published documentation site: tools, conventions, worked examples
+- [ ] README rewritten around what a user has working in the first minute
+- [ ] A validation table: every number the documentation claims, and where it is checked
+- [ ] One page explaining what each library underneath does and when to use it directly
