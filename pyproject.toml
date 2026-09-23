@@ -1,17 +1,59 @@
 [build-system]
-requires = ["setuptools>=68"]
+# 77 is the floor for the SPDX `license` expression and `license-files` below.
+# Anything older reads `license = "MIT"` as a legacy table and fails the build.
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
+# The distribution name is not the import name. `abacus` was taken on the index
+# by an unrelated project; `abacus-mcp` was free, and it says what this is.
+# Renaming the Python package to match would have changed every import for the
+# sake of a registry collision.
 name = "abacus-mcp"
 version = "0.1.0"
 description = "An MCP server exposing option and portfolio analytics over a validated numerical core."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
-dependencies = [
-    "moneyness @ git+https://github.com/DaniyalMlk/moneyness.git",
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Daniyal" }]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "options",
+    "greeks",
+    "implied-volatility",
+    "portfolio-risk",
+    "quantitative-finance",
+    "llm-tools",
 ]
+# No `License ::` classifier: it is mutually exclusive with the SPDX expression
+# above, and supplying both is an error rather than a duplication.
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Typing :: Typed",
+]
+# An ordinary version range, not a direct URL. A `name @ git+https://...`
+# requirement installs locally and is rejected outright on upload to a package
+# index, which is the single reason this project could not be published at all.
+dependencies = [
+    "moneyness>=0.1,<0.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/DaniyalMlk/abacus"
+Source = "https://github.com/DaniyalMlk/abacus"
+Issues = "https://github.com/DaniyalMlk/abacus/issues"
 
 [project.scripts]
 abacus = "abacus.cli:main"
