@@ -1,0 +1,1132 @@
+"""The portfolio risk tools.
+
+Three kinds of check, in descending order of how much they prove.
+
+*Independent recomputation.* A normal value at risk is ``-(mu + z sigma)`` and the
+portfolio volatility is ``sqrt(w' S w)``. The tool does not return the covariance
+matrix — it travels in the handle — but it returns the volatilities and the
+correlation matrix, which is the same information, so the whole number can be
+rebuilt from the output by a different route and compared. That catches a
+transposed matrix, a weight misalignment or a missing square root, none of which
+a self-consistency check would notice.
+
+*Identities that hold whatever the input.* Expected shortfall is never below value
+at risk. Euler components sum to the total. A risk-parity solution has equal risk
+shares. A drawdown's recovery gain is ``d / (1 - d)``.
+
+*Refusals.* Every guard is exercised for the error it produces and the field it
+blames, because a tool whose refusals are wrong is worse than one that has none:
+the caller is told to fix the wrong thing.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+from typing import Any
+
+import pytest
+
+from abacus import book
+from abacus.handles import Minter
+from abacus.risk import (
+    MAX_RETURN_CELLS,
+    MIN_OBSERVATIONS,
+    WEIGHT_SUM_TOLERANCE,
+    RiskTools,
+)
+from abacus.tools import ToolRegistry
+
+ASSETS = ["EQ", "CR", "GV", "CM"]
+WEIGHTS = [0.4, 0.25, 0.15, 0.2]
+PERIODS = 252
+
+
+@pytest.fixture
+def registry() -> ToolRegistry:
+    """A registry holding only the risk tools, plus the book tools for one test.
+
+    Both groups get the *same* minter, which is what lets the wrong-kind-of-handle
+    test be a real test: a book handle presented to a risk tool has to be refused
+    on its contents, not on a failed signature check.
+    """
+    minter = Minter()
+    return book.register(RiskTools(minter).register(ToolRegistry()), minter=minter)
+
+
+def one_factor(periods: int = 400, assets: int = 4, *, seed: int = 0) -> list[list[float]]:
+    """A returns matrix with real cross-sectional structure.
+
+    A common factor plus idiosyncratic noise, so the covariance has something in it
+    to estimate. Independent columns would make every correlation zero and hide any
+    error in how the matrix is indexed.
+    """
+    rng = random.Random(seed)
+    factor = [rng.gauss(0.0004, 0.009) for _ in range(periods)]
+    loadings = [0.6 + 0.2 * index for index in range(assets)]
+    return [
+        [factor[t] * loadings[a] + rng.gauss(0.0, 0.004 + 0.002 * a) for a in range(assets)]
+        for t in range(periods)
+    ]
+
+
+def call(registry: ToolRegistry, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Call a tool and return its structured payload, asserting it succeeded."""
+    result = registry.call(name, arguments)
+    assert result["isError"] is False, result["structuredContent"]
+    payload = result["structuredContent"]
+    assert isinstance(payload, dict)
+    return payload
+
+
+def refuse(registry: ToolRegistry, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Call a tool expecting a recoverable error, and return the error object."""
+    result = registry.call(name, arguments)
+    assert result["isError"] is True, result["structuredContent"]
+    content = result["structuredContent"]
+    assert isinstance(content, dict)
+    error = content["error"]
+    assert isinstance(error, dict)
+    return error
+
+
+def covariance_from(payload: dict[str, Any]) -> list[list[float]]:
+    """Rebuild the covariance from the volatilities and the correlation matrix.
+
+    The whole point of this helper: it reconstructs the matrix the tool used from
+    the *reported* quantities by a different route, so every number checked against
+    it is checked against the output rather than against the implementation.
+    """
+    per_asset = payload["perAsset"]
+    assert isinstance(per_asset, list)
+    volatilities = [float(entry["volatility"]) for entry in per_asset]
+    rho = payload["correlation"]
+    assert isinstance(rho, list)
+    return [
+        [volatilities[i] * volatilities[j] * float(rho[i][j]) for j in range(len(volatilities))]
+        for i in range(len(volatilities))
+    ]
+
+
+def quadratic_form(weights: list[float], matrix: list[list[float]]) -> float:
+    return math.fsum(
+        weights[i] * matrix[i][j] * weights[j]
+        for i in range(len(weights))
+        for j in range(len(weights))
+    )
+
+
+# -- estimating the moments --------------------------------------------------
+
+
+def test_the_estimate_reports_what_it_estimated(registry: ToolRegistry) -> None:
+    payload = call(
+        registry,
+        "estimate_return_moments",
+        {"returns": one_factor(), "assets": ASSETS, "periodsPerYear": PERIODS},
+    )
+    assert payload["assets"] == ASSETS
+    assert payload["observations"] == 400
+    assert payload["estimator"] == "ledoit-wolf"
+    assert payload["convention"] == "simple"
+    assert isinstance(payload["handle"], str)
+
+    per_asset = payload["perAsset"]
+    assert isinstance(per_asset, list)
+    assert [entry["name"] for entry in per_asset] == ASSETS
+    for entry in per_asset:
+        # Annualisation is sqrt(periods) for a volatility and periods for a mean.
+        # Getting these the same way round is the classic slip, and it is a factor
+        # of sixteen at daily frequency.
+        assert entry["annualisedVolatility"] == pytest.approx(
+            entry["volatility"] * math.sqrt(PERIODS), rel=1e-12
+        )
+        assert entry["annualisedMean"] == pytest.approx(entry["mean"] * PERIODS, rel=1e-12)
+
+
+def test_the_correlation_matrix_is_one_on_the_diagonal_and_symmetric(
+    registry: ToolRegistry,
+) -> None:
+    """A correlation matrix is the one output a reader can check by eye.
+
+    Which is why it is reported instead of the covariance: a transposition or a
+    scaling error is visible in it and invisible in a covariance.
+    """
+    payload = call(
+        registry,
+        "estimate_return_moments",
+        {"returns": one_factor(), "assets": ASSETS, "periodsPerYear": PERIODS},
+    )
+    rho = payload["correlation"]
+    assert isinstance(rho, list)
+    for i, row in enumerate(rho):
+        assert row[i] == pytest.approx(1.0, abs=1e-12)
+        for j, value in enumerate(row):
+            assert -1.0 <= value <= 1.0
+            assert value == pytest.approx(rho[j][i], rel=1e-12)
+
+
+def test_shrinkage_is_reported_and_the_sample_estimator_has_none(
+    registry: ToolRegistry,
+) -> None:
+    returns = one_factor()
+    shrunk = call(
+        registry,
+        "estimate_return_moments",
+        {"returns": returns, "assets": ASSETS, "periodsPerYear": PERIODS},
+    )
+    shrinkage = shrunk["shrinkage"]
+    assert isinstance(shrinkage, dict)
+    assert 0.0 <= float(shrinkage["intensity"]) <= 1.0
+    assert shrinkage["target"] == "constant-correlation"
+
+    plain = call(
+        registry,
+        "estimate_return_moments",
+        {
+            "returns": returns,
+            "assets": ASSETS,
+            "periodsPerYear": PERIODS,
+            "estimator": "sample",
+        },
+    )
+    assert "shrinkage" not in plain
+    assert plain["estimator"] == "sample"
+
+
+def test_shrinkage_leaves_the_variances_alone(registry: ToolRegistry) -> None:
+    """The constant-correlation target replaces correlations, not variances.
+
+    So the per-asset volatilities must be identical under both estimators. This is
+    the identity that says the shrinkage was applied to the right part of the
+    matrix, and it holds at any intensity, including one.
+    """
+    returns = one_factor()
+    common = {"returns": returns, "assets": ASSETS, "periodsPerYear": PERIODS}
+    shrunk = call(registry, "estimate_return_moments", common)
+    plain = call(registry, "estimate_return_moments", {**common, "estimator": "sample"})
+
+    shrunk_assets = shrunk["perAsset"]
+    plain_assets = plain["perAsset"]
+    assert isinstance(shrunk_assets, list)
+    assert isinstance(plain_assets, list)
+    for left, right in zip(shrunk_assets, plain_assets, strict=True):
+        assert left["volatility"] == pytest.approx(right["volatility"], rel=1e-12)
+
+
+def test_asset_names_default_to_positions(registry: ToolRegistry) -> None:
+    payload = call(
+        registry,
+        "estimate_return_moments",
+        {"returns": one_factor(assets=3), "periodsPerYear": PERIODS},
+    )
+    assert payload["assets"] == ["asset_1", "asset_2", "asset_3"]
+
+
+# -- tail risk, checked against an independent recomputation -----------------
+
+
+def test_the_normal_value_at_risk_is_the_textbook_expression(
+    registry: ToolRegistry,
+) -> None:
+    """``VaR = -(mu + z sigma)`` with sigma rebuilt from the reported output.
+
+    z at 99% is -2.3263478740408408, the standard normal 1% quantile. It is written
+    out rather than imported so that this test does not share a normal quantile
+    function with the code under test.
+    """
+    returns = one_factor()
+    moments = call(
+        registry,
+        "estimate_return_moments",
+        {"returns": returns, "assets": ASSETS, "periodsPerYear": PERIODS},
+    )
+    risk = call(
+        registry,
+        "portfolio_tail_risk",
+        {"handle": moments["handle"], "weights": WEIGHTS, "confidence": 0.99},
+    )
+
+    matrix = covariance_from(moments)
+    volatility = math.sqrt(quadratic_form(WEIGHTS, matrix))
+    per_asset = moments["perAsset"]
+    assert isinstance(per_asset, list)
+    mean = math.fsum(w * float(a["mean"]) for w, a in zip(WEIGHTS, per_asset, strict=True))
+
+    assert risk["volatility"] == pytest.approx(volatility, rel=1e-9)
+    assert risk["mean"] == pytest.approx(mean, rel=1e-9)
+    assert risk["valueAtRisk"] == pytest.approx(
+        -(mean + -2.3263478740408408 * volatility), rel=1e-9
+    )
+    assert risk["method"] == "normal"
+    assert risk["tailProbability"] == pytest.approx(0.01, abs=1e-15)
+
+
+def test_the_historical_value_at_risk_is_an_order_statistic_of_the_portfolio(
+    registry: ToolRegistry,
+) -> None:
+    """Recomputed from the returns by hand, including the interpolation.
+
+    The portfolio series is the weighted sum of the rows, and the 1% linear
+    quantile of it is the value at risk. Doing it here independently is what
+    confirms the tool weighted the columns rather than the rows — a mistake that
+    produces a number of entirely plausible size.
+    """
+    returns = one_factor()
+    risk = call(
+        registry,
+        "portfolio_tail_risk",
+        {
+            "returns": returns,
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+            "method": "historical",
+            "quantileMethod": "linear",
+        },
+    )
+
+    portfolio = sorted(
+        math.fsum(w * value for w, value in zip(WEIGHTS, row, strict=True)) for row in returns
+    )
+    position = 0.01 * (len(portfolio) - 1)
+    lower = math.floor(position)
+    fraction = position - lower
+    quantile = portfolio[lower] * (1.0 - fraction) + portfolio[lower + 1] * fraction
+
+    assert risk["quantile"] == pytest.approx(quantile, rel=1e-12)
+    assert risk["valueAtRisk"] == pytest.approx(-quantile, rel=1e-12)
+    assert risk["method"] == "historical"
+    # The honesty number: a 1% tail of 400 observations is four of them.
+    assert risk["effectiveSample"] == pytest.approx(4.0, rel=1e-12)
+    assert risk["observations"] == 400
+
+
+@pytest.mark.parametrize(
+    "method", ["normal", "student-t", "cornish-fisher", "historical", "filtered-historical"]
+)
+def test_expected_shortfall_is_never_below_value_at_risk(
+    registry: ToolRegistry, method: str
+) -> None:
+    """An identity, not an approximation: ES is a mean over the tail VaR bounds.
+
+    It holds for every method here, which makes it the one assertion that can be
+    made across all five and is worth making for exactly that reason.
+    """
+    risk = call(
+        registry,
+        "portfolio_tail_risk",
+        {
+            "returns": one_factor(),
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+            "method": method,
+        },
+    )
+    assert float(risk["expectedShortfall"]) >= float(risk["valueAtRisk"])
+    assert risk["method"] == method
+    assert risk["observations"] == 400
+
+
+def test_every_method_names_itself_and_its_own_diagnostics(registry: ToolRegistry) -> None:
+    """The point of the module: a number that says how it was made."""
+    shared = {
+        "returns": one_factor(),
+        "assets": ASSETS,
+        "weights": WEIGHTS,
+        "periodsPerYear": PERIODS,
+    }
+    student = call(registry, "portfolio_tail_risk", {**shared, "method": "student-t"})
+    assert student["degreesOfFreedom"] == 5.0
+
+    corrected = call(registry, "portfolio_tail_risk", {**shared, "method": "cornish-fisher"})
+    assert "skewness" in corrected
+    assert "excessKurtosis" in corrected
+
+    historical = call(registry, "portfolio_tail_risk", {**shared, "method": "historical"})
+    assert historical["quantileMethod"] == "linear"
+    # The exact estimator averages the worst `n p` observations, where `n p` need
+    # not be a whole number: four full ones and a fifth weighted by the remainder.
+    # At 400 and 1% the remainder is 4.4e-16 rather than 0, because 0.01 is not a
+    # binary fraction, so the count reads 5 where the arithmetic is really 4. The
+    # figure worth acting on is effectiveSample, which is n * p exactly.
+    assert historical["tailObservations"] in (4, 5)
+    assert historical["effectiveSample"] == pytest.approx(4.0, rel=1e-12)
+
+    filtered = call(
+        registry, "portfolio_tail_risk", {**shared, "method": "filtered-historical"}
+    )
+    assert filtered["decay"] == 0.94
+    assert float(filtered["volatilityScaling"]) > 0.0
+    # The scaling is today's volatility against the window average, so it must
+    # reproduce the two figures it was computed from.
+    assert filtered["volatilityScaling"] == pytest.approx(
+        float(filtered["volatility"]) / float(filtered["averageVolatility"]), rel=1e-9
+    )
+
+
+def test_the_scaled_t_is_wider_than_the_normal_at_the_same_volatility(
+    registry: ToolRegistry,
+) -> None:
+    """Both are fitted to the same variance, so the difference is tail shape only.
+
+    A t scaled to unit variance has a 1% quantile further out than a normal's for
+    any finite degrees of freedom, which is the entire reason to reach for it. If
+    the scaling were left out the t would be wider for a different and wrong
+    reason — its raw variance is v/(v-2) — so the volatilities are asserted equal
+    first.
+    """
+    shared = {
+        "returns": one_factor(),
+        "assets": ASSETS,
+        "weights": WEIGHTS,
+        "periodsPerYear": PERIODS,
+    }
+    normal = call(registry, "portfolio_tail_risk", {**shared, "method": "normal"})
+    student = call(registry, "portfolio_tail_risk", {**shared, "method": "student-t"})
+
+    assert student["volatility"] == pytest.approx(float(normal["volatility"]), rel=1e-12)
+    assert float(student["valueAtRisk"]) > float(normal["valueAtRisk"])
+    assert float(student["expectedShortfall"]) > float(normal["expectedShortfall"])
+
+
+def test_a_handle_reproduces_the_inline_parametric_answer_exactly(
+    registry: ToolRegistry,
+) -> None:
+    """Not approximately. The handle carries the same covariance, to the bit.
+
+    The handle is canonical JSON of the payload, so a float that survived the round
+    trip is the same float. An approximate assertion here would hide a lossy
+    encoding, which would then show up as a number that drifts when a caller reuses
+    a handle instead of resending the matrix — the least debuggable failure this
+    design could have.
+    """
+    returns = one_factor()
+    moments = call(
+        registry,
+        "estimate_return_moments",
+        {"returns": returns, "assets": ASSETS, "periodsPerYear": PERIODS},
+    )
+    inline = call(
+        registry,
+        "portfolio_tail_risk",
+        {
+            "returns": returns,
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+            "method": "normal",
+        },
+    )
+    reused = call(
+        registry,
+        "portfolio_tail_risk",
+        {"handle": moments["handle"], "weights": WEIGHTS, "method": "normal"},
+    )
+    assert reused["valueAtRisk"] == inline["valueAtRisk"]
+    assert reused["expectedShortfall"] == inline["expectedShortfall"]
+    assert reused["volatility"] == inline["volatility"]
+    assert reused["observations"] == inline["observations"]
+    assert reused["periodsPerYear"] == inline["periodsPerYear"]
+
+
+# -- what a handle cannot do -------------------------------------------------
+
+
+@pytest.mark.parametrize("method", ["historical", "filtered-historical", "cornish-fisher"])
+def test_a_handle_is_refused_for_the_methods_that_read_the_path(
+    registry: ToolRegistry, method: str
+) -> None:
+    """Refused with the reason and the remedy, not answered from what it has.
+
+    This is the cost of the handle design, and the error is where that cost is
+    paid: a caller who reused a handle out of habit has to be told that the path is
+    gone, that it cannot be put in a handle, and which methods do work from one.
+    """
+    moments = call(
+        registry,
+        "estimate_return_moments",
+        {"returns": one_factor(), "assets": ASSETS, "periodsPerYear": PERIODS},
+    )
+    error = refuse(
+        registry,
+        "portfolio_tail_risk",
+        {"handle": moments["handle"], "weights": WEIGHTS, "method": method},
+    )
+    assert error["kind"] == "handle_lacks_path"
+    message = str(error["message"])
+    assert "`returns`" in message
+    assert "'normal' and 'student-t'" in message
+
+
+def test_a_position_book_handle_is_refused_as_the_wrong_kind(
+    registry: ToolRegistry,
+) -> None:
+    """Both tool groups mint handles with the same key, so the MAC will pass.
+
+    Which is the point: the refusal has to come from reading the payload's kind
+    tag, not from a signature check that happens to fail. Without the tag a book
+    would be decoded as a moments payload and the KeyError would surface as an
+    internal error.
+    """
+    opened = call(
+        registry,
+        "open_position_book",
+        {
+            "spot": 100.0,
+            "rate": 0.04,
+            "legs": [
+                {
+                    "instrument": "call",
+                    "strike": 100.0,
+                    "time": 0.5,
+                    "vol": 0.2,
+                    "quantity": 1.0,
+                }
+            ],
+        },
+    )
+    error = refuse(
+        registry,
+        "portfolio_tail_risk",
+        {"handle": opened["handle"], "weights": WEIGHTS},
+    )
+    assert error["kind"] == "handle_wrong_kind"
+    assert "open_position_book" in str(error["message"])
+
+
+def test_a_handle_and_a_matrix_together_are_refused(registry: ToolRegistry) -> None:
+    moments = call(
+        registry,
+        "estimate_return_moments",
+        {"returns": one_factor(), "assets": ASSETS, "periodsPerYear": PERIODS},
+    )
+    error = refuse(
+        registry,
+        "portfolio_tail_risk",
+        {
+            "handle": moments["handle"],
+            "returns": one_factor(),
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+        },
+    )
+    assert error["kind"] == "domain"
+    assert "exactly one" in str(error["message"])
+
+
+def test_neither_a_handle_nor_a_matrix_is_refused(registry: ToolRegistry) -> None:
+    error = refuse(registry, "portfolio_tail_risk", {"weights": WEIGHTS})
+    assert error["kind"] == "domain"
+    assert "exactly one" in str(error["message"])
+
+
+def test_an_expired_handle_says_to_estimate_again(registry: ToolRegistry) -> None:
+    short = Minter(ttl_s=1)
+    tools = RiskTools(short)
+    payload = tools.moments_payload(
+        {"returns": one_factor(), "assets": ASSETS, "periodsPerYear": PERIODS}
+    )
+    handle = payload["handle"]
+    assert isinstance(handle, str)
+    # Redeemed in the future rather than by sleeping: the minter takes the moment
+    # as an argument precisely so a lifetime can be tested without waiting for one.
+    with pytest.raises(Exception, match="expired"):
+        short.redeem(handle, now=math.inf)
+
+
+# -- contributions -----------------------------------------------------------
+
+
+def test_the_components_sum_to_the_total(registry: ToolRegistry) -> None:
+    """The Euler identity, which is what makes a risk share meaningful.
+
+    Without it a "contribution" is a normalised guess. The tool reports its own
+    residual, and that is asserted small as well, so a covariance that had to be
+    repaired could not hide behind the summation.
+    """
+    payload = call(
+        registry,
+        "portfolio_risk_contributions",
+        {
+            "returns": one_factor(),
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+        },
+    )
+    assets = payload["assets"]
+    assert isinstance(assets, list)
+    assert math.fsum(float(entry["component"]) for entry in assets) == pytest.approx(
+        float(payload["total"]), rel=1e-12
+    )
+    assert math.fsum(float(entry["percentage"]) for entry in assets) == pytest.approx(
+        1.0, rel=1e-12
+    )
+    assert abs(float(payload["identityError"])) < 1e-15
+    assert payload["measure"] == "volatility"
+
+
+def test_the_total_volatility_is_the_quadratic_form(registry: ToolRegistry) -> None:
+    """Checked against the matrix rebuilt from the estimate's own output."""
+    returns = one_factor()
+    moments = call(
+        registry,
+        "estimate_return_moments",
+        {"returns": returns, "assets": ASSETS, "periodsPerYear": PERIODS},
+    )
+    payload = call(
+        registry,
+        "portfolio_risk_contributions",
+        {"handle": moments["handle"], "weights": WEIGHTS},
+    )
+    expected = math.sqrt(quadratic_form(WEIGHTS, covariance_from(moments)))
+    assert payload["total"] == pytest.approx(expected, rel=1e-9)
+
+
+def test_effective_bets_never_exceeds_the_number_of_positions(
+    registry: ToolRegistry,
+) -> None:
+    """And is strictly below it whenever the assets are correlated.
+
+    The one-factor fixture is correlated by construction, so a value equal to four
+    would mean the correlation had been lost somewhere between the estimate and the
+    decomposition.
+    """
+    payload = call(
+        registry,
+        "portfolio_risk_contributions",
+        {
+            "returns": one_factor(),
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+        },
+    )
+    assert 1.0 <= float(payload["effectiveBets"]) < 4.0
+    assert float(payload["diversificationRatio"]) > 1.0
+
+
+def test_the_diversification_ratio_is_null_for_a_short_portfolio(
+    registry: ToolRegistry,
+) -> None:
+    """Null and the reason, not a number and not a refused call.
+
+    The ratio adds up individual volatilities in its numerator; a short leg's
+    volatility is one the portfolio subtracts rather than adds, so the quotient
+    stops measuring diversification. The contributions the caller asked for are
+    unaffected by that, so the call still answers.
+    """
+    payload = call(
+        registry,
+        "portfolio_risk_contributions",
+        {
+            "returns": one_factor(),
+            "assets": ASSETS,
+            "weights": [0.9, 0.5, -0.4, 0.0],
+            "periodsPerYear": PERIODS,
+        },
+    )
+    assert payload["diversificationRatio"] is None
+    assert "short position" in str(payload["diversificationNote"])
+    assets = payload["assets"]
+    assert isinstance(assets, list)
+    assert math.fsum(float(e["component"]) for e in assets) == pytest.approx(
+        float(payload["total"]), rel=1e-12
+    )
+
+
+def test_a_hedge_contributes_negative_risk(registry: ToolRegistry) -> None:
+    """A short leg in a correlated portfolio reduces risk, and must say so.
+
+    Reported as a negative component rather than a small positive one. The
+    difference matters: a small positive share says "this position barely matters",
+    a negative one says "removing it would make things worse", and they call for
+    opposite decisions. The positive shares then sum past one, which is arithmetic
+    and not a bug.
+    """
+    payload = call(
+        registry,
+        "portfolio_risk_contributions",
+        {
+            "returns": one_factor(),
+            "assets": ASSETS,
+            "weights": [0.9, 0.5, -0.4, 0.0],
+            "periodsPerYear": PERIODS,
+        },
+    )
+    assert payload["hasNegativeContribution"] is True
+    assets = payload["assets"]
+    assert isinstance(assets, list)
+    hedge = next(entry for entry in assets if entry["name"] == "GV")
+    assert float(hedge["component"]) < 0.0
+    assert float(hedge["percentage"]) < 0.0
+    assert math.fsum(float(e["percentage"]) for e in assets) == pytest.approx(1.0, rel=1e-12)
+    # Concentration and effective bets read the shares as a distribution, which a
+    # negative share is not. Null with the reason, rather than a number that is not
+    # one or a refusal of the whole call: the contributions are what was asked for
+    # and they are perfectly well defined.
+    assert payload["concentration"] is None
+    assert payload["effectiveBets"] is None
+    assert "negative risk contribution" in str(payload["concentrationNote"])
+
+
+@pytest.mark.parametrize("measure", ["valueAtRisk", "expectedShortfall"])
+def test_the_tail_measures_decompose_and_report_their_assumption(
+    registry: ToolRegistry, measure: str
+) -> None:
+    payload = call(
+        registry,
+        "portfolio_risk_contributions",
+        {
+            "returns": one_factor(),
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+            "measure": measure,
+            "confidence": 0.975,
+        },
+    )
+    assert payload["confidence"] == 0.975
+    assert payload["distribution"] == "normal"
+    assets = payload["assets"]
+    assert isinstance(assets, list)
+    assert math.fsum(float(e["component"]) for e in assets) == pytest.approx(
+        float(payload["total"]), rel=1e-12
+    )
+
+
+# -- risk parity -------------------------------------------------------------
+
+
+def test_risk_parity_equalises_the_risk_shares(registry: ToolRegistry) -> None:
+    payload = call(
+        registry,
+        "risk_parity_weights",
+        {"returns": one_factor(), "assets": ASSETS, "periodsPerYear": PERIODS},
+    )
+    assert payload["converged"] is True
+    assert payload["equalRisk"] is True
+    assets = payload["assets"]
+    assert isinstance(assets, list)
+    for entry in assets:
+        assert float(entry["percentage"]) == pytest.approx(0.25, abs=1e-6)
+    weights = payload["weights"]
+    assert isinstance(weights, list)
+    assert math.fsum(float(w) for w in weights) == pytest.approx(1.0, rel=1e-12)
+    assert all(float(w) > 0.0 for w in weights)
+
+
+def test_risk_parity_respects_an_uneven_budget(registry: ToolRegistry) -> None:
+    """The achieved shares track the requested ones, normalised.
+
+    Asserted against the normalised budget rather than the raw one, because the
+    budget is a set of shares and 4:2:2:2 is the same request as 0.4:0.2:0.2:0.2.
+    """
+    budgets = [4.0, 2.0, 2.0, 2.0]
+    total = math.fsum(budgets)
+    payload = call(
+        registry,
+        "risk_parity_weights",
+        {
+            "returns": one_factor(),
+            "assets": ASSETS,
+            "periodsPerYear": PERIODS,
+            "budgets": budgets,
+        },
+    )
+    assert payload["equalRisk"] is False
+    assets = payload["assets"]
+    assert isinstance(assets, list)
+    for entry, budget in zip(assets, budgets, strict=True):
+        assert float(entry["percentage"]) == pytest.approx(budget / total, abs=1e-6)
+    assert float(payload["budgetError"]) < 1e-6
+
+
+def test_risk_parity_weights_are_not_the_input_weights(registry: ToolRegistry) -> None:
+    """The one-factor fixture has unequal volatilities, so parity is not equal weight.
+
+    Worth pinning: a solver that returned its starting point would satisfy every
+    other assertion here if the assets happened to be identical.
+    """
+    payload = call(
+        registry,
+        "risk_parity_weights",
+        {"returns": one_factor(), "assets": ASSETS, "periodsPerYear": PERIODS},
+    )
+    weights = payload["weights"]
+    assert isinstance(weights, list)
+    assert max(float(w) for w in weights) - min(float(w) for w in weights) > 0.01
+
+
+# -- drawdown ----------------------------------------------------------------
+
+
+def path_returns(*values: float) -> list[list[float]]:
+    """A single-column returns matrix, padded to the observation floor."""
+    padding = [0.0] * max(0, MIN_OBSERVATIONS - len(values))
+    return [[value] for value in (*values, *padding)]
+
+
+def test_a_constructed_drawdown_is_measured_exactly(registry: ToolRegistry) -> None:
+    """Up 25%, then down to 0.75 of the peak, then back up past it.
+
+    The returns are chosen so the depth is exactly 0.25 and the recovery gain is
+    exactly 1/3, which is the asymmetry the report exists to make visible: a 25%
+    fall needs a 33.3% gain, not a 25% one.
+    """
+    returns = path_returns(0.25, -0.25, 0.4, *([0.0] * 9))
+    payload = call(
+        registry,
+        "portfolio_drawdown",
+        {"returns": returns, "assets": ["P"], "weights": [1.0], "periodsPerYear": PERIODS},
+    )
+    worst = payload["maximumDrawdown"]
+    assert isinstance(worst, dict)
+    assert worst["depth"] == pytest.approx(0.25, rel=1e-12)
+    assert worst["recoveryReturn"] == pytest.approx(1.0 / 3.0, rel=1e-12)
+    # Positions index the wealth curve, not the returns: 0 is the starting
+    # valuation, so the peak after the first return is position 1. Reading them as
+    # return indices would put every date one period early, which is the kind of
+    # error that produces a plausible answer.
+    assert worst["peakPosition"] == 1
+    assert worst["troughPosition"] == 2
+    assert worst["recovered"] is True
+    assert worst["recoveryPosition"] == 3
+    assert worst["declinePeriods"] == 1
+    assert worst["peakValue"] == pytest.approx(1.25, rel=1e-12)
+    assert worst["troughValue"] == pytest.approx(0.9375, rel=1e-12)
+
+
+def test_a_drawdown_that_never_recovers_reports_null_not_zero(
+    registry: ToolRegistry,
+) -> None:
+    """Zero would read as instant recovery: the best possible gloss on the worst case."""
+    returns = path_returns(0.1, -0.3, *([0.0] * 12))
+    payload = call(
+        registry,
+        "portfolio_drawdown",
+        {"returns": returns, "assets": ["P"], "weights": [1.0], "periodsPerYear": PERIODS},
+    )
+    worst = payload["maximumDrawdown"]
+    assert isinstance(worst, dict)
+    assert worst["recovered"] is False
+    assert worst["recoveryPeriods"] is None
+    assert worst["recoveryPosition"] is None
+    assert worst["recoveryLabel"] is None
+    assert worst["depth"] == pytest.approx(0.3, rel=1e-12)
+
+
+def test_index_labels_name_the_periods(registry: ToolRegistry) -> None:
+    returns = path_returns(0.25, -0.25, 0.4, *([0.0] * 9))
+    # One label per point on the wealth curve, which is one more than the number of
+    # returns: n returns move a portfolio between n + 1 valuations.
+    labels = [f"2026-01-{index + 1:02d}" for index in range(len(returns) + 1)]
+    payload = call(
+        registry,
+        "portfolio_drawdown",
+        {
+            "returns": returns,
+            "assets": ["P"],
+            "weights": [1.0],
+            "periodsPerYear": PERIODS,
+            "index": labels,
+        },
+    )
+    worst = payload["maximumDrawdown"]
+    assert isinstance(worst, dict)
+    assert worst["peakLabel"] == "2026-01-02"
+    assert worst["troughLabel"] == "2026-01-03"
+    assert worst["recoveryLabel"] == "2026-01-04"
+
+
+def test_the_ulcer_index_separates_paths_with_the_same_maximum_drawdown(
+    registry: ToolRegistry,
+) -> None:
+    """The reason it is reported at all.
+
+    Two paths, same depth and same start and end: one falls and recovers at once,
+    the other stays down. Maximum drawdown cannot tell them apart; the ulcer index
+    must, because it reads the whole underwater path.
+    """
+    common = {"assets": ["P"], "weights": [1.0], "periodsPerYear": PERIODS}
+    quick = call(
+        registry,
+        "portfolio_drawdown",
+        {"returns": path_returns(-0.2, 0.25, *([0.0] * 11)), **common},
+    )
+    lingering = call(
+        registry,
+        "portfolio_drawdown",
+        {"returns": path_returns(-0.2, *([0.0] * 9), 0.25, 0.0), **common},
+    )
+
+    quick_worst = quick["maximumDrawdown"]
+    lingering_worst = lingering["maximumDrawdown"]
+    assert isinstance(quick_worst, dict)
+    assert isinstance(lingering_worst, dict)
+    assert quick_worst["depth"] == pytest.approx(float(lingering_worst["depth"]), rel=1e-12)
+    assert float(lingering["ulcerIndex"]) > float(quick["ulcerIndex"])
+
+
+def test_shallow_episodes_can_be_filtered_out(registry: ToolRegistry) -> None:
+    returns = one_factor(assets=1)
+    everything = call(
+        registry,
+        "portfolio_drawdown",
+        {"returns": returns, "weights": [1.0], "periodsPerYear": PERIODS},
+    )
+    material = call(
+        registry,
+        "portfolio_drawdown",
+        {
+            "returns": returns,
+            "weights": [1.0],
+            "periodsPerYear": PERIODS,
+            "minimumDepth": 0.02,
+        },
+    )
+    assert int(material["episodeCount"]) < int(everything["episodeCount"])
+    episodes = material["worstEpisodes"]
+    assert isinstance(episodes, list)
+    assert all(float(episode["depth"]) >= 0.02 for episode in episodes)
+    # Deepest first, so a reader who stops after one has read the worst one.
+    depths = [float(episode["depth"]) for episode in episodes]
+    assert depths == sorted(depths, reverse=True)
+
+
+def test_drawdown_defaults_to_equal_weights(registry: ToolRegistry) -> None:
+    returns = one_factor()
+    equal = call(
+        registry,
+        "portfolio_drawdown",
+        {"returns": returns, "assets": ASSETS, "periodsPerYear": PERIODS},
+    )
+    spelled = call(
+        registry,
+        "portfolio_drawdown",
+        {
+            "returns": returns,
+            "assets": ASSETS,
+            "weights": [0.25] * 4,
+            "periodsPerYear": PERIODS,
+        },
+    )
+    assert equal["ulcerIndex"] == spelled["ulcerIndex"]
+
+
+# -- refusals ----------------------------------------------------------------
+
+
+def test_weights_that_do_not_sum_to_one_are_refused_with_the_total(
+    registry: ToolRegistry,
+) -> None:
+    error = refuse(
+        registry,
+        "portfolio_tail_risk",
+        {
+            "returns": one_factor(),
+            "assets": ASSETS,
+            "weights": [0.4, 0.25, 0.15, 0.1],
+            "periodsPerYear": PERIODS,
+        },
+    )
+    assert error["kind"] == "domain"
+    assert "0.9" in str(error["message"])
+    details = error["details"]
+    assert isinstance(details, list)
+    assert details[0]["path"] == "/weights"
+
+
+def test_weights_just_inside_the_tolerance_are_accepted(registry: ToolRegistry) -> None:
+    """The boundary, so the tolerance is a decision rather than an accident.
+
+    A genuine cash position expressed as a residual is the case this exists for.
+    """
+    risk = call(
+        registry,
+        "portfolio_tail_risk",
+        {
+            "returns": one_factor(),
+            "assets": ASSETS,
+            "weights": [0.4, 0.25, 0.15, 0.2 - WEIGHT_SUM_TOLERANCE * 0.9],
+            "periodsPerYear": PERIODS,
+        },
+    )
+    assert float(risk["weightSum"]) < 1.0
+
+
+def test_the_wrong_number_of_weights_names_both_counts(registry: ToolRegistry) -> None:
+    error = refuse(
+        registry,
+        "portfolio_tail_risk",
+        {
+            "returns": one_factor(),
+            "assets": ASSETS,
+            "weights": [0.5, 0.5],
+            "periodsPerYear": PERIODS,
+        },
+    )
+    assert "2 weights for 4 assets" in str(error["message"])
+    assert "EQ" in str(error["message"])
+
+
+def test_a_ragged_matrix_names_the_offending_row(registry: ToolRegistry) -> None:
+    returns = one_factor()
+    returns[7] = returns[7][:2]
+    error = refuse(
+        registry,
+        "estimate_return_moments",
+        {"returns": returns, "assets": ASSETS, "periodsPerYear": PERIODS},
+    )
+    assert "row 7" in str(error["message"])
+
+
+def test_too_few_observations_is_refused(registry: ToolRegistry) -> None:
+    """Refused by the schema's minItems, which is the cheaper of the two guards."""
+    error = refuse(
+        registry,
+        "estimate_return_moments",
+        {"returns": one_factor(periods=5), "assets": ASSETS, "periodsPerYear": PERIODS},
+    )
+    assert error["kind"] == "invalid_input"
+    assert "minItems" in str(error["details"])
+
+
+def test_too_large_a_matrix_is_refused_in_cells(registry: ToolRegistry) -> None:
+    error = refuse(
+        registry,
+        "estimate_return_moments",
+        {"returns": one_factor(periods=11_000, assets=4), "periodsPerYear": PERIODS},
+    )
+    assert str(MAX_RETURN_CELLS) in str(error["message"])
+
+
+def test_a_name_count_mismatch_is_refused(registry: ToolRegistry) -> None:
+    error = refuse(
+        registry,
+        "estimate_return_moments",
+        {"returns": one_factor(), "assets": ["A", "B"], "periodsPerYear": PERIODS},
+    )
+    assert "2 asset names for 4 columns" in str(error["message"])
+
+
+def test_returns_written_as_percentages_are_refused_by_the_schema(
+    registry: ToolRegistry,
+) -> None:
+    """A 1% return written as 1 is a hundredfold error and the commonest one there is.
+
+    The schema caps a return at 10, which is a 1000% gain: real but rare enough
+    that refusing it is the right trade against catching a whole file of
+    percentages.
+    """
+    returns = [[1.5, 0.2, -0.8, 0.3] for _ in range(20)]
+    error = refuse(
+        registry,
+        "estimate_return_moments",
+        {"returns": [[12.0, 0.2, -0.8, 0.3], *returns], "periodsPerYear": PERIODS},
+    )
+    assert error["kind"] == "invalid_input"
+
+
+def test_a_return_of_minus_one_or_worse_is_refused(registry: ToolRegistry) -> None:
+    """Minus one is a total loss and the end of the series; below it is a data error."""
+    error = refuse(
+        registry,
+        "estimate_return_moments",
+        {"returns": [[-1.0, 0.0, 0.0, 0.0] for _ in range(20)], "periodsPerYear": PERIODS},
+    )
+    assert error["kind"] == "invalid_input"
+
+
+def test_periods_per_year_is_required_with_inline_returns(registry: ToolRegistry) -> None:
+    """Required by the schema on the tools that annualise unconditionally, and by
+    a domain check on the ones where it is only needed in the inline case."""
+    error = refuse(
+        registry,
+        "portfolio_tail_risk",
+        {"returns": one_factor(), "assets": ASSETS, "weights": WEIGHTS},
+    )
+    assert "periodsPerYear" in str(error["message"])
+    assert "252" in str(error["message"])
+
+
+def test_an_index_of_the_wrong_length_is_refused(registry: ToolRegistry) -> None:
+    error = refuse(
+        registry,
+        "portfolio_drawdown",
+        {
+            "returns": one_factor(periods=20, assets=1),
+            "weights": [1.0],
+            "periodsPerYear": PERIODS,
+            "index": [f"d{i}" for i in range(20)],
+        },
+    )
+    # Twenty labels for twenty returns is the natural mistake, and it is off by one:
+    # the labels name valuations, of which there are twenty-one.
+    assert "20 index labels for 20 periods" in str(error["message"])
+    assert "need 21" in str(error["message"])
+    assert "wealth curve" in str(error["message"])
+
+
+def test_an_uninvertible_cornish_fisher_correction_is_refused(
+    registry: ToolRegistry,
+) -> None:
+    """A portfolio skewed enough to break the expansion gets no number at all.
+
+    Outside the monotone region the corrected mapping is not a quantile function,
+    so nothing read off it is a quantile of anything. A plausible-looking number
+    would be worse than a refusal, and the refusal names the two methods that do
+    handle a fat tail.
+    """
+    rng = random.Random(17)
+    # A rare, very large loss: enough skewness and kurtosis to leave the region.
+    returns = [
+        [rng.gauss(0.0005, 0.004) - (0.25 if index % 60 == 0 else 0.0)] for index in range(300)
+    ]
+    error = refuse(
+        registry,
+        "portfolio_tail_risk",
+        {
+            "returns": returns,
+            "weights": [1.0],
+            "periodsPerYear": PERIODS,
+            "method": "cornish-fisher",
+        },
+    )
+    assert error["kind"] == "domain"
+    message = str(error["message"])
+    assert "quantile function" in message
+    assert "student-t" in message
+    assert "historical" in message
+
+
+def test_zero_budget_in_risk_parity_is_refused_by_the_schema(
+    registry: ToolRegistry,
+) -> None:
+    error = refuse(
+        registry,
+        "risk_parity_weights",
+        {
+            "returns": one_factor(),
+            "assets": ASSETS,
+            "periodsPerYear": PERIODS,
+            "budgets": [0.0, 0.4, 0.3, 0.3],
+        },
+    )
+    assert error["kind"] == "invalid_input"
+
+
+def test_a_budget_count_mismatch_is_refused(registry: ToolRegistry) -> None:
+    error = refuse(
+        registry,
+        "risk_parity_weights",
+        {
+            "returns": one_factor(),
+            "assets": ASSETS,
+            "periodsPerYear": PERIODS,
+            "budgets": [0.5, 0.5],
+        },
+    )
+    assert "2 budgets for 4 assets" in str(error["message"])

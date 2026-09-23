@@ -441,6 +441,32 @@ def _weights(args: dict[str, Any], moments: Moments) -> list[float]:
     return weights
 
 
+def _diversification(weights: list[float], matrix: list[list[float]]) -> dict[str, Any]:
+    """The diversification ratio, or null and the reason it does not apply.
+
+    The ratio is the weighted sum of individual volatilities over the portfolio
+    volatility, and it is only a measure of diversification when every weight is
+    positive. With a short position the numerator adds a volatility the portfolio
+    subtracts, and the quotient stops meaning anything — the library refuses it, and
+    it is right to.
+
+    Reported as null rather than omitted, and never as a reason to refuse the whole
+    call: the contributions are what the caller asked for and a short position does
+    not make them ill-defined.
+    """
+    if any(weight < 0.0 for weight in weights):
+        return {
+            "diversificationRatio": None,
+            "diversificationNote": (
+                "Not defined for a portfolio with a short position: the ratio's "
+                "numerator adds up individual volatilities, and a short leg's "
+                "volatility is one the portfolio subtracts rather than adds. The risk "
+                "contributions above are unaffected."
+            ),
+        }
+    return {"diversificationRatio": diversification_ratio(weights, matrix)}
+
+
 def _allocation_payload(allocation: Allocation) -> dict[str, Any]:
     """Render a risk allocation, per asset and in aggregate."""
     percentage = allocation.percentage
@@ -470,8 +496,31 @@ def _allocation_payload(allocation: Allocation) -> dict[str, Any]:
         # exactly, and that is worth seeing rather than hiding behind a tolerance.
         "identityError": allocation.identity_error,
         "hasNegativeContribution": allocation.has_negative_contribution,
-        "concentration": concentration(allocation),
-        "effectiveBets": effective_bets(allocation),
+        # Both of these read the risk shares as a probability distribution, which
+        # a negative share is not. The library refuses to compute them in that
+        # case, and it is right to: an entropy over a negative weight is not a
+        # smaller number, it is not a number. Reporting null with the reason keeps
+        # a hedged portfolio answerable — the contributions themselves are
+        # perfectly well defined, and they are what the caller asked for.
+        **(
+            {
+                "concentration": None,
+                "effectiveBets": None,
+                "concentrationNote": (
+                    "Not defined for this portfolio: at least one position has a "
+                    "negative risk contribution, and concentration and effective bets "
+                    "read the shares as a distribution. A negative share means that "
+                    "position removes risk, which is worth knowing and is not a "
+                    "quantity an entropy is defined over. The contributions above are "
+                    "unaffected."
+                ),
+            }
+            if allocation.has_negative_contribution
+            else {
+                "concentration": concentration(allocation),
+                "effectiveBets": effective_bets(allocation),
+            }
+        ),
     }
 
 
@@ -831,15 +880,16 @@ class RiskTools:
             "weightSum": math.fsum(weights),
             "observations": moments.observations,
             "covarianceEstimator": moments.estimator,
-            "diversificationRatio": diversification_ratio(weights, moments.covariance),
+            **_diversification(weights, moments.covariance),
             "note": (
                 "Components are Euler contributions and sum to the total exactly, so a "
                 "share is a share of something rather than a normalised guess. A "
                 "negative component belongs to a position that reduces portfolio risk; "
                 "its percentage is negative too, and the positive shares therefore sum "
-                "past one. Effective bets is the reciprocal of the concentration: it "
-                f"says this portfolio carries risk like {effective_bets(allocation):.3g} "
-                f"independent positions rather than {len(moments.assets)}."
+                "past one. Effective bets, when it is defined, is the reciprocal of "
+                "the concentration: it says how many independent positions the "
+                f"portfolio carries risk like, against the {len(moments.assets)} it "
+                "holds."
             ),
         }
         if measure != "volatility":
@@ -872,9 +922,7 @@ class RiskTools:
             "equalRisk": solution.equal_risk,
             "observations": moments.observations,
             "covarianceEstimator": moments.estimator,
-            "diversificationRatio": diversification_ratio(
-                list(solution.weights), moments.covariance
-            ),
+            **_diversification(list(solution.weights), moments.covariance),
             "note": (
                 "The weights are long-only and sum to one. budgetError is the largest "
                 "gap between an asset's achieved risk share and its target, reported as "
@@ -912,11 +960,14 @@ class RiskTools:
         weights = [float(value) for value in weights]
 
         labels = args.get("index")
-        if labels is not None and len(labels) != panel.observations:
+        if labels is not None and len(labels) != panel.observations + 1:
             raise DomainError(
-                f"{len(labels)} index labels for {panel.observations} periods. The "
-                "labels name the rows of `returns`, one each, and are only used to "
-                "report when a drawdown began and ended.",
+                f"{len(labels)} index labels for {panel.observations} periods of "
+                f"returns, which need {panel.observations + 1}. The labels name points "
+                "on the wealth curve, not rows of `returns`: n returns move a portfolio "
+                "between n + 1 valuations, and a drawdown runs from one valuation to "
+                "another. The first label is the starting value, before any return has "
+                "been applied.",
                 field="index",
             )
 
@@ -951,7 +1002,10 @@ class RiskTools:
             "note": (
                 "Depths are fractions of the peak: 0.2 is a twenty percent fall. "
                 "recoveryPeriods is null for a drawdown that never recovered, which is "
-                "not the same as zero. The ulcer index reads the whole underwater path "
+                "not the same as zero. Positions index the wealth curve rather than the "
+                "returns, so 0 is the starting valuation and a peak at position 1 is the "
+                "value after the first return; there are n + 1 of them for n returns. "
+                "The ulcer index reads the whole underwater path "
                 "rather than its two extreme points, so two portfolios with the same "
                 "maximum drawdown separate on it. Sortino's denominator is the "
                 "full-sample downside deviation, which divides by every observation "
@@ -1169,12 +1223,16 @@ class RiskTools:
                     "periodsPerYear": _PERIODS_PER_YEAR,
                     "index": {
                         "type": "array",
-                        "minItems": MIN_OBSERVATIONS,
+                        "minItems": MIN_OBSERVATIONS + 1,
                         "items": {"type": "string", "minLength": 1, "maxLength": 32},
                         "description": (
-                            "Labels for the rows of `returns`, one each — dates, usually. "
-                            "Used only to say when a drawdown began, bottomed and "
-                            "recovered. Without them the report uses row positions."
+                            "Labels for the points on the wealth curve — dates, usually. "
+                            "One MORE than there are rows of `returns`: n returns move a "
+                            "portfolio between n + 1 valuations, and the first label is "
+                            "the starting value before any return is applied. Used only "
+                            "to say when a drawdown began, bottomed and recovered. "
+                            "Without them the report uses curve positions, on the same "
+                            "0-to-n numbering."
                         ),
                     },
                     "minimumDepth": {
