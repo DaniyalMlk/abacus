@@ -131,3 +131,22 @@ def test_every_supported_interpreter_is_advertised() -> None:
         if line.startswith("Programming Language :: Python :: 3.")
     }
     assert advertised == {"3.10", "3.11", "3.12", "3.13"}
+
+
+def test_both_console_scripts_reach_the_entry_point() -> None:
+    """`abacus` and `abacus-mcp` are both installed, and are the same command.
+
+    The alias exists so that `uvx abacus-mcp stdio` works: `uvx` runs the console
+    script whose name matches the distribution, and without the alias a client
+    configuration would have to carry `uvx --from abacus-mcp abacus stdio`
+    instead. Losing the alias would break every configuration written against it,
+    silently, at launch time rather than at install time.
+    """
+    from importlib.metadata import entry_points
+
+    scripts = {
+        entry.name: entry.value
+        for entry in entry_points(group="console_scripts")
+        if entry.name in {"abacus", "abacus-mcp"}
+    }
+    assert scripts == {"abacus": "abacus.cli:main", "abacus-mcp": "abacus.cli:main"}

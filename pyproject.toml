@@ -57,6 +57,13 @@ Issues = "https://github.com/DaniyalMlk/abacus/issues"
 
 [project.scripts]
 abacus = "abacus.cli:main"
+# An alias under the distribution name, for the sake of one command. `uvx <name>`
+# runs the console script whose name matches the distribution, so without this
+# `uvx abacus-mcp stdio` fails and the incantation becomes
+# `uvx --from abacus-mcp abacus stdio` — which is what a client configuration
+# would then have to carry, for no reason a reader could see. Both names reach the
+# same entry point.
+abacus-mcp = "abacus.cli:main"
 
 [project.optional-dependencies]
 # The server itself depends only on moneyness, which in turn has no
