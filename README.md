@@ -13,7 +13,7 @@ It targets MCP revision **2026-07-28** and has one runtime dependency.
 ## Running it
 
 ```bash
-pip install git+https://github.com/DaniyalMlk/abacus.git
+pip install abacus-mcp
 
 abacus stdio          # what an MCP client launches
 abacus http           # Streamable HTTP on 127.0.0.1:8000/mcp
@@ -21,15 +21,62 @@ abacus tools          # print the tool surface and exit
 abacus conform        # run the conformance suite against this server
 ```
 
-To register it with a client that launches servers over stdio:
+The distribution is `abacus-mcp`; the package you import is `abacus`. The short
+name was already taken on the index by an unrelated project, and renaming the
+package to match would have changed every import for the sake of a registry
+collision.
+
+## Registering it with a client
+
+Nothing has to be installed first if you have [`uv`](https://docs.astral.sh/uv/):
+`uvx` fetches the server, runs it, and caches it for next time.
 
 ```json
 {
   "mcpServers": {
-    "abacus": { "command": "abacus", "args": ["stdio"] }
+    "abacus": {
+      "command": "uvx",
+      "args": ["abacus-mcp", "stdio"]
+    }
   }
 }
 ```
+
+Where that file lives depends on the client:
+
+| Client | Configuration |
+| --- | --- |
+| Claude Desktop | `claude_desktop_config.json`, under `mcpServers` |
+| Claude Code | `claude mcp add abacus -- uvx abacus-mcp stdio` |
+| Cursor | `.cursor/mcp.json` in the project, or `~/.cursor/mcp.json` |
+| VS Code | `.vscode/mcp.json`, under `servers` |
+| Zed | `context_servers` in the settings |
+
+With the package installed into an environment rather than run through `uvx`,
+point the client at the installed script instead. An absolute path is worth the
+noise: a client launched from a desktop session rarely has the same `PATH` as
+your shell, and a bare `abacus` that works in a terminal and not in the client is
+the most common way this goes wrong.
+
+```json
+{
+  "mcpServers": {
+    "abacus": {
+      "command": "/path/to/venv/bin/abacus",
+      "args": ["stdio"]
+    }
+  }
+}
+```
+
+To check the server is healthy before wiring a client to it, run the conformance
+suite against the launch command you are about to configure:
+
+```bash
+abacus conform --stdio "uvx abacus-mcp stdio"
+```
+
+It exits non-zero on a failure, so it works as a gate rather than a report.
 
 ## The tools
 
@@ -279,16 +326,34 @@ endpoint that was never there.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 507 tests
+pytest          # 516 tests
 mypy --strict
 ruff check .
 ```
 
 Continuous integration runs the suite on Python 3.10 through 3.13, type-checks
 and lints, runs the conformance suite over both transports, and installs the
-built wheel into a clean environment to confirm the entry point answers a real
-request and passes conformance — a wheel that imports but cannot serve is not a
-working server.
+wheel *and* the sdist into separate clean environments to confirm each one's entry
+point answers a real request and passes conformance — a distribution that imports
+but cannot serve is not a working server, and the two artefacts are built by
+different code paths.
+
+The declared dependency is `moneyness>=0.1,<0.2`, an ordinary version range. It
+used to be a `git+https` direct reference, which resolves perfectly well locally
+and is refused outright when a distribution carrying it is uploaded to an index —
+so the server was unpublishable while every check was green. `tests/test_metadata.py`
+now fails if such a requirement reappears. Until the library has a release on the
+index, CI builds it from its repository into a local wheelhouse and lets pip
+resolve the declared range against that; the resolution path is the one an index
+install takes, and only the source of the file differs.
+
+### Releasing
+
+The version lives in `pyproject.toml`, is mirrored by `abacus.__version__`, and a
+test asserts they agree. Pushing `v<version>` builds both artefacts, checks the
+metadata the way the index will, installs each into a clean environment and makes
+it pass conformance, and then publishes — using the index's trusted-publishing
+flow, so there is no upload token in this repository or in its secrets.
 
 Prices and Greeks are checked against the library exactly and, independently,
 against finite differences of the prices the pricing tool itself returns. Those

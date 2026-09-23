@@ -1,0 +1,45 @@
+name: Dependency wheelhouse
+description: >
+  Make the server's runtime dependency resolvable before it exists on a package
+  index, by building it from its repository into a local wheelhouse.
+
+# This action is scaffolding with a known end. `pyproject.toml` asks for
+# `moneyness>=0.1,<0.2`, which is the requirement a published distribution must
+# carry — a `git+https` direct reference is refused on upload, so it cannot be
+# what the metadata says. But the library has no release yet, so an ordinary
+# resolve against the index finds nothing.
+#
+# Building it here and exporting PIP_FIND_LINKS gives every later `pip` call in
+# the job somewhere to find it, without threading a flag through each one and
+# without weakening the declared requirement. The resolution path is the same one
+# an index install takes; only the source of the file differs.
+#
+# When `moneyness` is released, delete this directory and every `uses:` line that
+# references it. Nothing else in either workflow depends on it.
+
+inputs:
+  repository:
+    description: Repository to build the dependency from.
+    required: false
+    default: https://github.com/DaniyalMlk/moneyness.git
+  wheelhouse:
+    description: Directory the built wheel is placed in.
+    required: false
+    default: /tmp/wheelhouse
+
+runs:
+  using: composite
+  steps:
+    - name: Build the dependency into a wheelhouse
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip wheel
+        # --no-deps because the library has none, and asking pip to resolve them
+        # would send it to the index for packages that do not need to be there.
+        python -m pip wheel --no-deps -w "${{ inputs.wheelhouse }}" \
+          "git+${{ inputs.repository }}"
+        ls -l "${{ inputs.wheelhouse }}"
+
+    - name: Point pip at the wheelhouse for the rest of the job
+      shell: bash
+      run: echo "PIP_FIND_LINKS=${{ inputs.wheelhouse }}" >> "$GITHUB_ENV"
