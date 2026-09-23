@@ -684,8 +684,10 @@ class CurveTools:
             "points": rows,
             "note": (
                 "forwardFromPrevious is the rate between each date and the one before "
-                "it in the list, and null for the first, so the list order is part of "
-                "the question. Zero rates and forwards are quoted under the "
+                "it in the list, so the list order is part of the question. For the "
+                "first date the previous point is the curve's reference, which makes it "
+                "a spot-starting rate; it is null only when a date repeats or the "
+                "reference itself is asked for. Zero rates and forwards are quoted under the "
                 "compoundings named above; the curve itself holds discount factors, "
                 "and every rate here is derived from them. A zero rate at the reference "
                 "date is null rather than zero: the discount factor there is one "
@@ -969,9 +971,16 @@ class CurveTools:
         coupon = bond.periodic_coupon
         # A lattice values a bond as a full price at its settlement node, so an
         # observed clean price has to have its accrued interest added back before the
-        # two can be compared. At a settlement that coincides with a coupon date the
-        # accrual is zero and this is a no-op; anywhere else, skipping it puts the
-        # whole accrual into the spread, which at a 5% coupon is tens of basis points.
+        # two can be compared.
+        #
+        # In practice this is always a no-op, and the reason is worth writing down. The
+        # step length is one coupon period and `steps_between` refuses a maturity that
+        # is not a whole number of steps from settlement, so every settlement the
+        # lattice accepts falls on a coupon date, where the accrual is zero. The
+        # conversion stays because it is what makes the two price conventions
+        # commensurable, and because the alignment constraint is the library's rather
+        # than something this code should assume will hold forever. A mid-period
+        # settlement is refused, with the library naming the gap.
         accrued = bond.accrued(settlement)
         full_price = price + accrued if clean else price
 
