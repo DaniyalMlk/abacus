@@ -64,11 +64,17 @@ exercised end to end, and covered by tests that run.
 
 ## Phase 8 — Installable in one line
 
-- [ ] Release metadata, classifiers and keywords on the server and on each library it depends on
-- [ ] Tag-driven release workflow using trusted publishing, so no credential is stored
-- [ ] Depend on released versions rather than repository URLs, which package indexes reject
-- [ ] `uvx abacus-mcp` and `pip install abacus-mcp` verified from a clean environment
-- [ ] Registration snippets for the clients people actually use
+- [x] Release metadata, classifiers and keywords on the server and on each library it depends on
+- [x] Tag-driven release workflow using trusted publishing, so no credential is stored
+- [x] Depend on released versions rather than repository URLs, which package indexes reject
+- [x] A test that fails if a direct-reference requirement returns, since the build,
+      the suite and the type checker all stayed green while one was present
+- [x] `uvx abacus-mcp stdio` and `pip install abacus-mcp` verified from a clean
+      environment, resolving the dependency by name against a wheelhouse standing
+      in for the index, and passing conformance from both the wheel and the sdist
+- [x] Registration snippets for the clients people actually use
+- [ ] A first release on the index, which waits on the publisher being registered
+      there for this project and for the library it depends on
 
 ## Phase 9 — Portfolio risk tools
 
