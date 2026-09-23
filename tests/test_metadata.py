@@ -82,21 +82,24 @@ def test_no_dependency_is_a_direct_reference() -> None:
     assert offenders == [], f"direct references cannot be published: {offenders}"
 
 
-def test_the_runtime_dependency_is_pinned_to_a_compatible_range() -> None:
-    """One runtime dependency, bounded at both ends.
+def test_every_runtime_dependency_is_bounded_at_both_ends() -> None:
+    """The numerical libraries, each bounded above as well as below.
 
     Unbounded below, a resolver may pick a release predating the functions this
-    server calls. Unbounded above, the next breaking release of the library
-    breaks the server for everyone who installs it after that, with no change
-    here. The bounds are the only thing that makes a published version mean
-    something a year later.
+    server calls. Unbounded above, the next breaking release of a library breaks
+    the server for everyone who installs it after that, with no change here. The
+    bounds are the only thing that makes a published version mean something a
+    year later.
     """
-    runtime = [line for line in _requirements() if "extra ==" not in line]
-    assert len(runtime) == 1, runtime
-    requirement = runtime[0].replace(" ", "")
-    assert requirement.startswith("moneyness")
-    assert ">=0.1" in requirement
-    assert "<0.2" in requirement
+    runtime = {
+        line.split(maxsplit=1)[0].split(">")[0].split("<")[0].split("=")[0]: line.replace(" ", "")
+        for line in _requirements()
+        if "extra ==" not in line
+    }
+    assert set(runtime) == {"moneyness", "shortfall"}, runtime
+    for name, requirement in runtime.items():
+        assert ">=0.1" in requirement, name
+        assert "<0.2" in requirement, name
 
 
 def test_the_typing_marker_ships() -> None:
