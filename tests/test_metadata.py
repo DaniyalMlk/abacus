@@ -96,7 +96,7 @@ def test_every_runtime_dependency_is_bounded_at_both_ends() -> None:
         for line in _requirements()
         if "extra ==" not in line
     }
-    assert set(runtime) == {"moneyness", "shortfall"}, runtime
+    assert set(runtime) == {"moneyness", "shortfall", "tenor"}, runtime
     for name, requirement in runtime.items():
         assert ">=0.1" in requirement, name
         assert "<0.2" in requirement, name

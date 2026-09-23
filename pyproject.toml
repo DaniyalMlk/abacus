@@ -49,6 +49,7 @@ classifiers = [
 dependencies = [
     "moneyness>=0.1,<0.2",
     "shortfall>=0.1,<0.2",
+    "tenor>=0.1,<0.2",
 ]
 
 [project.urls]

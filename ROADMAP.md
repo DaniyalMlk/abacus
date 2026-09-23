@@ -92,10 +92,23 @@ exercised end to end, and covered by tests that run.
 
 ## Phase 10 — Curve and bond tools
 
-- [ ] Discount curve bootstrapping from deposits, futures and swaps
-- [ ] Bond analytics: price, yield, duration, convexity
-- [ ] Key rate risk and option-adjusted spread
-- [ ] Curve handles, so a bootstrapped curve is reused rather than rebuilt per call
+- [x] Discount curve bootstrapping from deposits, futures and swaps, reporting the
+      per-instrument solve residuals and whether the curve reprices its own inputs
+- [x] Discount factors, zero rates and forwards read off a curve, refusing a date past
+      its horizon rather than extrapolating past the longest instrument
+- [x] Bond analytics: price, yield, duration, convexity — from a yield *and* from a
+      curve, both reported with the gap between them, because they answer different
+      questions and neither is wrong
+- [x] Key rate risk, with the durations summing to the effective duration and the
+      residual stated, plus level, slope and curvature, plus instrument risk in the
+      things that can actually be traded
+- [x] Option-adjusted spread off a lattice calibrated to the curve, solved against the
+      observed price rather than the model's own, with the lattice's repricing check
+      and the option cost
+- [x] Curve handles, carrying the pillars and the quotes behind them — a curve is two
+      numbers per instrument, so unlike the returns handle this one loses nothing
+- [x] Every tool called over the wire with a good input and a bad one, including
+      through a launched process
 
 ## Phase 11 — Execution and backtest-validation tools
 

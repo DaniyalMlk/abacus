@@ -4,19 +4,19 @@ description: >
   package index, by building them from their repositories into a local
   wheelhouse.
 
-# This action is scaffolding with a known end. `pyproject.toml` asks for
-# `moneyness>=0.1,<0.2` and `shortfall>=0.1,<0.2`, which are the requirements a
-# published distribution must carry — a `git+https` direct reference is refused on
-# upload, so it cannot be what the metadata says. But neither library has a
-# release yet, so an ordinary resolve against the index finds nothing.
+# This action is scaffolding with a known end. `pyproject.toml` asks for bounded
+# version ranges on each library, which is what a published distribution must carry
+# — a `git+https` direct reference is refused on upload, so it cannot be what the
+# metadata says. But none of the libraries has a release yet, so an ordinary resolve
+# against the index finds nothing.
 #
 # Building it here and exporting PIP_FIND_LINKS gives every later `pip` call in
 # the job somewhere to find it, without threading a flag through each one and
 # without weakening the declared requirement. The resolution path is the same one
 # an index install takes; only the source of the file differs.
 #
-# When both libraries are released, delete this directory and every `uses:` line
-# that references it. Nothing else in either workflow depends on it.
+# When the libraries are released, delete this directory and every `uses:` line that
+# references it. Nothing else in either workflow depends on it.
 
 inputs:
   repositories:
@@ -25,6 +25,7 @@ inputs:
     default: >-
       https://github.com/DaniyalMlk/moneyness.git
       https://github.com/DaniyalMlk/shortfall.git
+      https://github.com/DaniyalMlk/tenor.git
   wheelhouse:
     description: Directory the built wheel is placed in.
     required: false

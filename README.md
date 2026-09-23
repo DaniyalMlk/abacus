@@ -9,11 +9,11 @@ high-precision references and published results, and exposes those cores over th
 Model Context Protocol. Nothing here wraps a third-party pricing API: the numbers
 are computed by these libraries and tested where they live.
 
-It targets MCP revision **2026-07-28** and has two runtime dependencies, both pure
+It targets MCP revision **2026-07-28** and has three runtime dependencies, all pure
 Python with none of their own:
-[`moneyness`](https://github.com/DaniyalMlk/moneyness) for the option mathematics
-and [`shortfall`](https://github.com/DaniyalMlk/shortfall) for the portfolio risk
-estimators.
+[`moneyness`](https://github.com/DaniyalMlk/moneyness) for the option mathematics,
+[`shortfall`](https://github.com/DaniyalMlk/shortfall) for the portfolio risk
+estimators and [`tenor`](https://github.com/DaniyalMlk/tenor) for curves and bonds.
 
 ## Running it
 
@@ -109,6 +109,11 @@ It exits non-zero on a failure, so it works as a gate rather than a report.
 | `portfolio_risk_contributions` | Euler risk contributions, concentration, effective bets |
 | `risk_parity_weights` | Weights that equalise risk contributions, with the convergence evidence |
 | `portfolio_drawdown` | Deepest drawdown, time underwater, ulcer index, Calmar and Sortino |
+| `bootstrap_discount_curve` | A curve from deposits, futures and par swaps, with a reusable handle |
+| `discount_curve_rates` | Discount factors, zero rates and forwards at whatever dates you ask for |
+| `bond_analytics` | Price, yield, duration and convexity, from a yield and from a curve |
+| `bond_curve_risk` | Key rate durations, curve shape risk, and the tradeable hedge |
+| `bond_spreads` | Z-spread, I-spread, and option-adjusted spread off a calibrated lattice |
 
 Conventions, which are also stated in the server's instructions and in every
 schema description: volatilities and rates are decimal fractions, so 20% is
@@ -161,6 +166,41 @@ is not one; the contributions themselves are unaffected and still returned.
 cash position or a typo, and scaling it quietly turns the second into a plausible
 answer. The sum is reported on every result and a sum far from one is refused with
 the total named.
+
+## Curves and bonds
+
+Three things to know before using this part of the surface.
+
+**No convention has a default, and that is the point.** A bond priced on the wrong
+day count basis is wrong by a few basis points — exactly the size of the spread
+anyone is trying to measure — so it is not approximately right, it answers a
+different question and looks entirely normal doing it. Every basis, frequency and
+rolling rule is an argument. The one exception is the rolling rule, which has a
+market convention; it is read out of the underlying library's own default rather
+than chosen here, and every result reports the rule it used, because it changes
+the cashflow dates and therefore the price.
+
+**The curve handle carries the curve, unlike the returns handle.** The difference
+is measured rather than stylistic. A returns matrix grows with the length of the
+history — five years of daily data on ten assets encodes to about 69,000
+characters, against a handle limit of 8192 — so that handle carries second moments
+and gives up the path. A bootstrapped curve *is* its pillars: two numbers per
+instrument, 264 characters at five pillars and 764 at sixty. So this handle carries
+the pillars and the quotes behind them, and every curve tool works from it exactly
+as from a fresh bootstrap, including instrument risk, which is a question about the
+quotes.
+
+**A bootstrap says whether it worked.** A curve that fails to reprice the
+instruments it was built from is not slightly wrong; it means nothing, and its
+pillar values look ordinary either way. The result carries the sweep count, the
+per-instrument solve residuals, and the repricing check. The same applies to the
+short-rate lattice: it reports whether it reprices the curve it was calibrated to,
+because a tree that does not is not a model of that curve and every spread read off
+it is wrong.
+
+A zero rate at the curve's reference date comes back as null rather than zero. The
+discount factor there is one whatever the rate is, so no rate is implied, and a zero
+would read as a rate rather than as the absence of one.
 
 ## Checking a server against the specification
 
@@ -383,7 +423,7 @@ endpoint that was never there.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 577 tests
+pytest          # 629 tests
 mypy --strict
 ruff check .
 ```
@@ -395,8 +435,8 @@ point answers a real request and passes conformance — a distribution that impo
 but cannot serve is not a working server, and the two artefacts are built by
 different code paths.
 
-The declared dependency is `moneyness>=0.1,<0.2`, an ordinary version range. It
-used to be a `git+https` direct reference, which resolves perfectly well locally
+The declared dependencies are ordinary bounded version ranges. One of them used to
+be a `git+https` direct reference, which resolves perfectly well locally
 and is refused outright when a distribution carrying it is uploaded to an index —
 so the server was unpublishable while every check was green. `tests/test_metadata.py`
 now fails if such a requirement reappears. Until the library has a release on the
