@@ -14,8 +14,8 @@ description: >
 # without weakening the declared requirement. The resolution path is the same one
 # an index install takes; only the source of the file differs.
 #
-# When `moneyness` is released, delete this directory and the four `uses:` lines
-# that reference it. Nothing else in the workflow depends on it.
+# When `moneyness` is released, delete this directory and every `uses:` line that
+# references it. Nothing else in either workflow depends on it.
 
 inputs:
   repository:

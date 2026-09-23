@@ -1,0 +1,104 @@
+name: release
+
+# Pushing a version tag is the whole trigger. There is no manual dispatch and no
+# branch trigger: a release is a tag, and anything that can publish without one
+# is a way to publish something nobody meant to.
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+jobs:
+  # Everything that can fail is in this job, before anything leaves the runner.
+  # An index will not accept a replacement for a version already taken, so a bad
+  # release cannot be corrected, only abandoned. That asymmetry is the reason
+  # every check is front-loaded here rather than run after publishing.
+  build:
+    name: build and prove the distributions serve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: ./.github/actions/dependency-wheelhouse
+
+      # The tag is written by hand and the version is written in a file, so they
+      # can disagree, and what follows is a release whose reported version is not
+      # the version anyone asked for.
+      - name: The tag and the declared version must agree
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          import tomllib
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          with open("pyproject.toml", "rb") as handle:
+              declared = tomllib.load(handle)["project"]["version"]
+
+          if tag != f"v{declared}":
+              sys.exit(f"tag {tag} does not match the declared version {declared}")
+          print(f"tag {tag} matches the declared version {declared}")
+          PY
+
+      - name: Build the sdist and the wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+
+      # twine's reading of the metadata is the same one the index applies on
+      # upload. It is also what rejects a direct-reference requirement, which is
+      # the fault that kept this project unpublishable, so this step is the last
+      # line of defence against it coming back.
+      - name: Check the metadata the index will read
+        run: python -m twine check --strict dist/*
+
+      # Each artefact is installed separately into an environment with no source
+      # tree in reach, and then made to answer. A server that imports but cannot
+      # serve a request is not a release; neither is one whose dependency does not
+      # resolve from its own metadata.
+      - name: The wheel installs into a clean environment and serves
+        run: |
+          python -m venv /tmp/from-wheel
+          /tmp/from-wheel/bin/pip install dist/*.whl
+          test "$(/tmp/from-wheel/bin/abacus --version | cut -d' ' -f2)" = "${GITHUB_REF_NAME#v}"
+          /tmp/from-wheel/bin/abacus conform --stdio "/tmp/from-wheel/bin/abacus stdio"
+
+      - name: The sdist installs into a clean environment and serves
+        run: |
+          python -m venv /tmp/from-sdist
+          /tmp/from-sdist/bin/pip install dist/*.tar.gz
+          test "$(/tmp/from-sdist/bin/abacus --version | cut -d' ' -f2)" = "${GITHUB_REF_NAME#v}"
+          /tmp/from-sdist/bin/abacus conform --stdio "/tmp/from-sdist/bin/abacus stdio"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+
+  # Split from the build so that the job holding the publishing identity does
+  # nothing but publish: it checks out no code and runs none of this project's
+  # own, so there is nothing in it that could reach the token it is given.
+  publish:
+    name: publish to the package index
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # The short-lived OpenID Connect token the index exchanges for an upload
+      # token. This is the whole point of trusted publishing: no API token is
+      # stored in this repository, in these workflows, or in the repository's
+      # secrets.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
