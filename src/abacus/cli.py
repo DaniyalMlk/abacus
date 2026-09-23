@@ -32,14 +32,20 @@ INSTRUCTIONS = (
     "local volatilities, aggregates option positions into a book, and estimates "
     "portfolio risk from a matrix of returns: covariance with shrinkage, value at "
     "risk and expected shortfall by five methods, Euler risk contributions, risk "
-    "parity weights and drawdown statistics. "
+    "parity weights and drawdown statistics. It also bootstraps discount curves from "
+    "deposits, futures and par swaps, and measures bonds against them: price, yield, "
+    "duration, convexity, key rate risk, and spreads up to the option-adjusted spread "
+    "of a callable bond. "
     "Volatilities and rates are decimal fractions, not percentages: 20% is 0.2, "
     "and so is a 20% return. Time is a year fraction, not a count of days: thirty "
     "days is roughly 0.082. Log-moneyness is measured on the forward, as "
     "log(strike / forward). A value at risk is a positive loss over one period of "
     "whatever frequency the returns have, so periodsPerYear must be given rather "
     "than assumed. Every risk result names the method that produced it, because "
-    "the number does not."
+    "the number does not. In the fixed-income tools no convention has a default: a "
+    "day count basis, a coupon frequency and a rolling rule must each be given, "
+    "because a bond on the wrong basis is wrong by about the size of the spread being "
+    "measured and looks entirely normal. Bond prices are per 100 of face."
 )
 
 
