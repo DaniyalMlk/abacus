@@ -78,11 +78,17 @@ exercised end to end, and covered by tests that run.
 
 ## Phase 9 — Portfolio risk tools
 
-- [ ] Value at risk and expected shortfall, parametric and historical, with the method named in the result
-- [ ] Shrinkage covariance from a returns matrix, reporting the shrinkage intensity it chose
-- [ ] Risk contributions and concentration, so the answer says where the risk is
-- [ ] Drawdown and tail statistics
-- [ ] Returns handles, so a matrix is uploaded once and reused across calls
+- [x] Value at risk and expected shortfall, parametric and historical, with the method named in the result
+- [x] Shrinkage covariance from a returns matrix, reporting the shrinkage intensity it chose
+- [x] Risk contributions and concentration, so the answer says where the risk is
+- [x] Risk parity weights, with the convergence evidence rather than a promise
+- [x] Drawdown and tail statistics
+- [x] Returns handles, so a matrix is estimated once and reused across calls — carrying
+      the mean vector and the covariance matrix rather than the returns, because a
+      handle has to fit in a message and a returns matrix does not, and refusing the
+      methods that read the path rather than answering them from a summary
+- [x] Every tool called over the wire with a good input and a bad one, including
+      through a launched process, with each refusal arriving as a recoverable result
 
 ## Phase 10 — Curve and bond tools
 

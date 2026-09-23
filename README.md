@@ -4,11 +4,16 @@ An MCP server that exposes option and portfolio analytics as tools.
 
 Language models are unreliable at arithmetic, so the useful thing a tool
 boundary can do is move the numbers somewhere trustworthy. `abacus` puts them in
-[`moneyness`](https://github.com/DaniyalMlk/moneyness), an options library whose
-numerical core is validated against closed-form results and high-precision
-references, and exposes that core over the Model Context Protocol.
+libraries whose numerical cores are validated against closed forms,
+high-precision references and published results, and exposes those cores over the
+Model Context Protocol. Nothing here wraps a third-party pricing API: the numbers
+are computed by these libraries and tested where they live.
 
-It targets MCP revision **2026-07-28** and has one runtime dependency.
+It targets MCP revision **2026-07-28** and has two runtime dependencies, both pure
+Python with none of their own:
+[`moneyness`](https://github.com/DaniyalMlk/moneyness) for the option mathematics
+and [`shortfall`](https://github.com/DaniyalMlk/shortfall) for the portfolio risk
+estimators.
 
 ## Running it
 
@@ -99,11 +104,63 @@ It exits non-zero on a failure, so it works as a gate rather than a report.
 | `amend_position_book` | Add or remove legs, or move the market, returning a new handle |
 | `position_book_greeks` | Total value and net sensitivities, with the per-leg breakdown |
 | `position_book_scenarios` | Reprice a book across a grid of spot and volatility shifts |
+| `estimate_return_moments` | Covariance from a returns matrix, with shrinkage, diagnostics and a reusable handle |
+| `portfolio_tail_risk` | Value at risk and expected shortfall by five methods, each naming itself |
+| `portfolio_risk_contributions` | Euler risk contributions, concentration, effective bets |
+| `risk_parity_weights` | Weights that equalise risk contributions, with the convergence evidence |
+| `portfolio_drawdown` | Deepest drawdown, time underwater, ulcer index, Calmar and Sortino |
 
 Conventions, which are also stated in the server's instructions and in every
 schema description: volatilities and rates are decimal fractions, so 20% is
-`0.2`; time is a year fraction, so thirty days is about `0.082`; log-moneyness
-is measured on the forward as `log(strike / forward)`.
+`0.2` — and so is a 20% return; time is a year fraction, so thirty days is about
+`0.082`; log-moneyness is measured on the forward as `log(strike / forward)`; a
+value at risk is a positive loss over one period of whatever frequency the
+returns have, so `periodsPerYear` is required rather than assumed.
+
+## Portfolio risk
+
+```bash
+# estimate once, then ask several questions of the estimate
+abacus tools | grep -A2 estimate_return_moments
+```
+
+Four decisions in this part of the surface are worth knowing before using it.
+
+**Every result names its method.** A one-day 99% value at risk of 2.2% under a
+normal assumption and 2.0% from the sample are the same quantity estimated two
+ways, and nothing about either number says which. So the method is on the result,
+along with the observation count and whatever diagnostics that method has: the
+degrees of freedom, the moments a correction used, the effective sample behind a
+historical tail.
+
+**A returns handle carries the second moments, not the returns.** A handle has to
+fit in a message a model carries through its context, and is capped at 8192
+characters for that reason. Measured: a year of daily returns on four assets
+encodes to about 6000 characters and five years on ten assets to about 69,000, so
+a handle carrying the matrix would refuse almost every portfolio worth asking
+about. A mean vector and a covariance matrix are `n + n²` numbers whatever the
+history length.
+
+What that buys is real — send a matrix once, then reweight, decompose and
+rebalance across as many calls as you like. What it costs is that the historical
+estimators and every drawdown statistic read the *path*, which a second-moment
+summary has discarded. Those need the matrix again, and say so rather than
+answering from what they have. The Cornish-Fisher correction is in the same
+position for a subtler reason: it needs the skewness and excess kurtosis of the
+*portfolio*, which depend on the weights.
+
+**Some questions have no answer for some portfolios, and get none.** Cornish-Fisher
+is refused outright when the estimated moments put its corrected quantile outside
+the region where it increases with the probability — outside it the mapping is not
+a quantile function and nothing read off it is a quantile of anything. Concentration
+and effective bets come back null for a portfolio with a negative risk
+contribution, because they read the shares as a distribution and a negative share
+is not one; the contributions themselves are unaffected and still returned.
+
+**Weights are not normalised silently.** A sum of 0.98 is either a two percent
+cash position or a typo, and scaling it quietly turns the second into a plausible
+answer. The sum is reported on every result and a sum far from one is refused with
+the total named.
 
 ## Checking a server against the specification
 
@@ -326,7 +383,7 @@ endpoint that was never there.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 516 tests
+pytest          # 577 tests
 mypy --strict
 ruff check .
 ```

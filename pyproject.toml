@@ -48,6 +48,7 @@ classifiers = [
 # index, which is the single reason this project could not be published at all.
 dependencies = [
     "moneyness>=0.1,<0.2",
+    "shortfall>=0.1,<0.2",
 ]
 
 [project.urls]

@@ -26,13 +26,20 @@ from .tools import ToolRegistry, install
 from .transports import serve_http, serve_stdio
 
 INSTRUCTIONS = (
-    "Option and portfolio analytics. Prices European options and reports their "
-    "Greeks, recovers implied volatility from a price, fits SVI volatility "
-    "slices and surfaces with both no-arbitrage checks, and extracts Dupire "
-    "local volatilities. Volatilities and rates are decimal fractions, not "
-    "percentages: 20% is 0.2. Time is a year fraction, not a count of days: "
-    "thirty days is roughly 0.082. Log-moneyness is measured on the forward, "
-    "as log(strike / forward)."
+    "Option and portfolio analytics. Prices European and American options and "
+    "reports their Greeks, recovers implied volatility from a price, fits SVI "
+    "volatility slices and surfaces with both no-arbitrage checks, extracts Dupire "
+    "local volatilities, aggregates option positions into a book, and estimates "
+    "portfolio risk from a matrix of returns: covariance with shrinkage, value at "
+    "risk and expected shortfall by five methods, Euler risk contributions, risk "
+    "parity weights and drawdown statistics. "
+    "Volatilities and rates are decimal fractions, not percentages: 20% is 0.2, "
+    "and so is a 20% return. Time is a year fraction, not a count of days: thirty "
+    "days is roughly 0.082. Log-moneyness is measured on the forward, as "
+    "log(strike / forward). A value at risk is a positive loss over one period of "
+    "whatever frequency the returns have, so periodsPerYear must be given rather "
+    "than assumed. Every risk result names the method that produced it, because "
+    "the number does not."
 )
 
 
