@@ -85,7 +85,8 @@ Dupire local volatilities including where the identity has no answer.
 **More than one position.** `open_position_book` and then
 `position_book_greeks`; `position_book_scenarios` to reprice across a grid of
 spot and volatility shifts; `amend_position_book` to change a leg or move the
-market without resending the book.
+market without resending the book; `describe_position_book` to read a book back
+out of a handle when the legs are no longer in reach.
 
 **Portfolio risk from returns.** `estimate_return_moments` first — it returns a
 handle, and the parametric tools run from it without resending the matrix.

@@ -306,6 +306,27 @@ real one. Skewness and kurtosis are refused when no distribution could have
 them: every distribution satisfies `kurtosis >= 1 + skewness^2`, so a skewness
 of -1.5 needs an excess kurtosis of at least 0.25.
 
+## The skill
+
+[`skill/SKILL.md`](skill/SKILL.md) is the overview the individual schemas cannot
+be: which tool to reach for, the conventions the whole surface shares, and three
+worked transcripts — a book and its Greeks, a portfolio's risk, and whether a
+backtest is evidence of anything.
+
+The transcripts are not prose about calls. They are fenced `transcript` blocks
+holding the arguments verbatim, with `$name` placeholders for the handles
+threaded between steps, and `tests/test_skill.py` parses them out and runs every
+one against a live server. An argument renamed in a schema, a required field
+added, a handle that stopped round-tripping: each shows up as a failing test
+rather than as an example somebody copies and cannot make work.
+
+The same file checks that every tool the skill names is registered and every
+registered tool is named — a rename breaks the first, a new phase breaks the
+second — and enforces a budget on the tool listing, which is 115,162 characters
+today against a ceiling of 140,000, with no single tool over 12,000. The listing
+is loaded before any work happens and grows with every group added, so the
+ceiling exists to make crossing it a decision rather than a drift.
+
 ## Checking a server against the specification
 
 The conformance suite drives a server through the wire format and reports on
