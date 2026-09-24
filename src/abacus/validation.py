@@ -61,6 +61,7 @@ from holdout import (
     superior_predictive_ability,
     trial_correlation,
 )
+from numpy.typing import NDArray
 
 from .analytics import guard
 from .tools import DomainError, ToolRegistry
@@ -160,7 +161,7 @@ _SEED = {
 # -- input parsing -----------------------------------------------------------
 
 
-def _matrix(args: dict[str, Any], key: str = "trials") -> np.ndarray:
+def _matrix(args: dict[str, Any], key: str = "trials") -> NDArray[np.float64]:
     """Read a trial matrix, refusing the shapes that would still compute."""
     rows = args[key]
     width = len(rows[0])
@@ -197,7 +198,7 @@ def _matrix(args: dict[str, Any], key: str = "trials") -> np.ndarray:
             field=key,
         )
 
-    matrix = np.asarray(rows, dtype=float)
+    matrix: NDArray[np.float64] = np.asarray(rows, dtype=np.float64)
     if not np.isfinite(matrix).all():
         raise DomainError(
             "the matrix holds a value that is not a finite number. A missing "
@@ -208,7 +209,7 @@ def _matrix(args: dict[str, Any], key: str = "trials") -> np.ndarray:
     return matrix
 
 
-def _effective(matrix: np.ndarray) -> dict[str, float]:
+def _effective(matrix: NDArray[np.float64]) -> dict[str, float]:
     """Every estimate of the effective trial count, so none is picked silently."""
     if matrix.shape[1] == 1:
         return dict.fromkeys(_EFFECTIVE_METHODS, 1.0)
@@ -239,7 +240,7 @@ def _finite(value: float | None, digits: int = 8) -> float | None:
 
 
 def _sharpe_payload(
-    matrix: np.ndarray, column: int, periods_per_year: float | None
+    matrix: NDArray[np.float64], column: int, periods_per_year: float | None
 ) -> dict[str, Any]:
     """A Sharpe ratio with the evidence for it, per period and annualised."""
     estimate = estimate_sharpe(matrix[:, column])
