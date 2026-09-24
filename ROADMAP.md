@@ -120,10 +120,10 @@ exercised end to end, and covered by tests that run.
 
 ## Phase 12 — The skill
 
-- [ ] A packaged skill covering when to reach for which tool and the conventions they share
-- [ ] Worked transcripts: pricing a book, sizing its risk, judging a backtest
-- [ ] A budget on the tool surface, so loading it stays cheap as it grows
-- [ ] The skill checked against the server it describes, in continuous integration
+- [x] A packaged skill covering when to reach for which tool and the conventions they share
+- [x] Worked transcripts: pricing a book, sizing its risk, judging a backtest
+- [x] A budget on the tool surface, so loading it stays cheap as it grows
+- [x] The skill checked against the server it describes, in continuous integration
 
 ## Phase 13 — Documentation
 
