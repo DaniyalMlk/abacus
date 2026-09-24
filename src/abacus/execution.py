@@ -65,11 +65,12 @@ from slippage import (
     half_life_sensitivity,
     implementation_shortfall,
     linear_trajectory,
+    optimal_trajectory,
     schedule_moments,
 )
 
 from .analytics import guard
-from .tools import DomainError, ToolExecutionError, ToolRegistry
+from .tools import DomainError, ToolRegistry
 
 #: Most fills one order may carry. A decomposition reads each fill once, so the
 #: cost is linear and the cap is not about time: it is that a caller pasting a
@@ -151,11 +152,15 @@ _IMPACT = {
         "type": "number",
         "minimum": 0,
         "description": (
-            "Permanent impact per unit traded, in price per share. The part of "
-            "the move the trade leaves behind. It does not enter the optimal "
-            "schedule at all — permanent impact costs the same however the "
-            "order is spread — which is why the trajectory below is insensitive "
-            "to it and the total cost is not."
+            "Permanent impact per unit traded, in price per share: the part of "
+            "the move the trade leaves behind. In continuous time it drops out "
+            "of the optimal schedule, since the same quantity moves the price "
+            "the same amount however it is spread. In discrete time it does "
+            "not quite, because it enters through the effective temporary "
+            "impact eta - gamma*tau/2, and the leftover is of the order of the "
+            "period length: on the worked example it shortens the half-life by "
+            "2.5% at tau = 1, by 0.25% at tau = 0.1 and by 0.025% at "
+            "tau = 0.01. It always moves the cost."
         ),
     },
     "eta": {
@@ -322,6 +327,21 @@ def _bps(value: float, notional: float) -> float | None:
     return round(1e4 * value / notional, 6)
 
 
+def _finite(value: float | None, digits: int = 6) -> float | None:
+    """Round a number, or report its absence when it has none to report.
+
+    ``json.dumps`` writes a bare ``Infinity`` for an infinite float, which is not
+    JSON — a strict parser on the other end rejects the whole message, so one
+    unbounded quantity buried in a result destroys every number beside it. The
+    risk-neutral schedule reaches here with a genuinely infinite half-life, which
+    is the correct answer to the question and cannot be sent as one, so it is
+    sent as ``null`` and explained in the payload's note instead.
+    """
+    if value is None or not math.isfinite(value):
+        return None
+    return round(value, digits)
+
+
 def _trajectory_payload(trajectory: Trajectory, problem: ExecutionProblem) -> dict[str, Any]:
     """Render a trajectory, with the cost figures it is chosen for."""
     expected, variance = schedule_moments(problem, trajectory.trades)
@@ -329,15 +349,15 @@ def _trajectory_payload(trajectory: Trajectory, problem: ExecutionProblem) -> di
         "times": [round(t, 10) for t in trajectory.times],
         "holdings": [round(h, 6) for h in trajectory.holdings],
         "trades": [round(x, 6) for x in trajectory.trades],
-        "expectedCost": round(trajectory.expected_cost, 6),
-        "costVariance": round(trajectory.variance, 6),
-        "costStandardDeviation": round(trajectory.std, 6),
+        "expectedCost": _finite(trajectory.expected_cost),
+        "costVariance": _finite(trajectory.variance),
+        "costStandardDeviation": _finite(trajectory.std),
         # Recomputed from the trades rather than read off the trajectory, so a
         # schedule and its cost cannot drift apart in the result.
-        "expectedCostFromTrades": round(expected, 6),
-        "costVarianceFromTrades": round(variance, 6),
-        "halfLife": None if trajectory.half_life is None else round(trajectory.half_life, 6),
-        "kappa": None if trajectory.kappa is None else round(trajectory.kappa, 10),
+        "expectedCostFromTrades": _finite(expected),
+        "costVarianceFromTrades": _finite(variance),
+        "halfLife": _finite(trajectory.half_life),
+        "kappa": _finite(trajectory.kappa, 10),
         "riskAversion": trajectory.risk_aversion,
     }
 
@@ -396,7 +416,11 @@ class ExecutionTools:
         # for it means evaluating sinh(0)/sinh(0). The library has a separate
         # entry point for that case; taking it here is exact rather than nearly
         # so, and cheaper than approaching the limit.
-        solved = linear_trajectory(problem) if aversion == 0.0 else _solve(problem, aversion)
+        solved = (
+            linear_trajectory(problem)
+            if aversion == 0.0
+            else optimal_trajectory(problem, aversion)
+        )
         trajectory = _trajectory_payload(solved, problem)
         sensitivity = half_life_sensitivity(problem, aversion) if aversion > 0.0 else None
         payload: dict[str, Any] = {
@@ -580,8 +604,9 @@ class ExecutionTools:
                 "raising the aversion front-loads the schedule, paying more impact "
                 "to spend less time exposed. The half-life says how front-loaded, "
                 "and its elasticities say which input would move it. Permanent "
-                "impact and fixed costs are charged on the whole quantity whatever "
-                "the schedule, so they change the cost and not the shape. "
+                "impact and fixed costs mostly change the cost rather than the "
+                "shape — a fixed cost exactly so, permanent impact to within a "
+                "term that shrinks with the period length. "
                 "Volatility is an absolute price move per unit of root time, not a "
                 "percentage, because it is traded off against an impact quoted in "
                 "price per share."
@@ -644,38 +669,6 @@ class ExecutionTools:
         )(guard(self.frontier_payload))
 
         return registry
-
-
-def _solve(problem: ExecutionProblem, aversion: float) -> Trajectory:
-    """Solve, turning an unbounded problem into a refusal rather than an overflow.
-
-    The closed form is a ratio of hyperbolic sines in ``kappa * T``. A large
-    enough aversion, or a small enough temporary impact, sends that argument past
-    where a double can hold ``sinh`` and the result comes back as a nan rather
-    than as a failure. A nan reaching the caller is worse than a refusal, because
-    it looks like an answer.
-    """
-    from slippage import optimal_trajectory
-
-    trajectory = optimal_trajectory(problem, aversion)
-    if not all(math.isfinite(value) for value in trajectory.holdings) or not math.isfinite(
-        trajectory.expected_cost
-    ):
-        raise ToolExecutionError(
-            f"a risk aversion of {aversion:g} against a temporary impact of "
-            f"{problem.impact.eta:g} makes the schedule numerically unbounded — the "
-            "optimum is to trade everything immediately, and the closed form "
-            "overflows before it says so. Lower the risk aversion or raise eta.",
-            kind="domain",
-            details=[
-                {
-                    "path": "/riskAversion",
-                    "keyword": "domain",
-                    "message": "the trajectory overflowed at this aversion",
-                }
-            ],
-        )
-    return trajectory
 
 
 def register(registry: ToolRegistry) -> ToolRegistry:
