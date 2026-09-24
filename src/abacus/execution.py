@@ -475,12 +475,15 @@ class ExecutionTools:
             points.append(
                 {
                     "riskAversion": aversion,
-                    "expectedCost": round(expected, 6),
-                    "costStandardDeviation": round(math.sqrt(variance), 6),
-                    "objective": round(expected + aversion * variance, 6),
-                    "halfLife": (
-                        None if trajectory.half_life is None else round(trajectory.half_life, 6)
-                    ),
+                    "expectedCost": _finite(expected),
+                    "costStandardDeviation": _finite(math.sqrt(variance)),
+                    "objective": _finite(expected + aversion * variance),
+                    # The risk-neutral end of the frontier has an infinite
+                    # half-life, exactly as the single-point solver does, and it
+                    # goes out as an absence for the same reason: `Infinity` is
+                    # not JSON, and one of them in a list of points would take
+                    # the whole message down.
+                    "halfLife": _finite(trajectory.half_life),
                     "trades": [round(x, 6) for x in trajectory.trades],
                 }
             )
