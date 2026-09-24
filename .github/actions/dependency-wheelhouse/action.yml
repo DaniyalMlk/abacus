@@ -16,7 +16,8 @@ description: >
 # an index install takes; only the source of the file differs.
 #
 # The repository is not always the distribution name: `slippage` publishes as
-# `slippage-tca`, because the short name on the index belongs to somebody else.
+# `slippage-tca` and `holdout` as `holdout-backtest`, because the short names on
+# the index belong to unrelated projects.
 # That does not matter here — pip reads the name out of the built wheel — but it
 # is why the list below does not match `pyproject.toml` line for line.
 #
@@ -32,6 +33,7 @@ inputs:
       https://github.com/DaniyalMlk/shortfall.git
       https://github.com/DaniyalMlk/tenor.git
       https://github.com/DaniyalMlk/slippage.git
+      https://github.com/DaniyalMlk/holdout.git
   wheelhouse:
     description: Directory the built wheel is placed in.
     required: false

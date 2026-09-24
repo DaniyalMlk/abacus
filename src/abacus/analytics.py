@@ -458,9 +458,9 @@ def register(registry: ToolRegistry) -> ToolRegistry:
 
 def default_registry() -> ToolRegistry:
     """A registry holding every tool this server exposes."""
-    from . import american, book, curves, execution, risk, vol
+    from . import american, book, curves, execution, risk, validation, vol
 
     built = register(ToolRegistry())
-    for module in (vol, american, book, risk, curves, execution):
+    for module in (vol, american, book, risk, curves, execution, validation):
         built = module.register(built)
     return built

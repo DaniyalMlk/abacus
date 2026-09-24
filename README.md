@@ -117,6 +117,11 @@ It exits non-zero on a failure, so it works as a gate rather than a report.
 | `decompose_implementation_shortfall` | What an order cost, split into delay, trading, opportunity and explicit |
 | `optimal_execution_schedule` | The Almgren-Chriss trajectory, its cost, and the half-life's elasticities |
 | `execution_cost_frontier` | Expected cost against cost risk, one schedule per risk aversion |
+| `deflated_sharpe_ratio` | A Sharpe ratio corrected for how many things were tried, on the effective count |
+| `minimum_track_record_length` | How long a record must be before a ratio that size means anything |
+| `effective_trial_count` | How many independent bets a correlated set of trials really is |
+| `backtest_overfitting_probability` | How often the in-sample winner lands in the bottom half out of sample |
+| `superior_predictive_ability` | Whether the best candidate beats the benchmark by more than the search would |
 
 Conventions, which are also stated in the server's instructions and in every
 schema description: volatilities and rates are decimal fractions, so 20% is
@@ -255,6 +260,51 @@ A risk-neutral schedule's half-life is infinite, and it comes back as `null`
 rather than as a number. `Infinity` is not JSON: a strict parser rejects the
 whole message over it, so one unbounded quantity would take every number beside
 it down.
+
+## Backtest validation
+
+Every other tool here answers a question about a price. These answer a question
+about a claim: somebody says this strategy earns a Sharpe of 1.5, and the honest
+reply depends on facts about the search that found it, none of which are in the
+number.
+
+```bash
+abacus tools | grep -A2 deflated_sharpe_ratio
+```
+
+**The trial count that matters is the effective one.** Two hundred variations of
+one moving-average rule are not two hundred independent bets, and deflating as
+though they were over-penalises the result. On the forty one-factor trials in
+`tests/test_validation.py` the eigenvalue method puts the effective count at
+3.0 against a raw 40, and the deflated Sharpe at 0.8244 against 0.7196 — ten
+points of probability the raw count throws away. On forty independent trials
+both counts are 40.0 and both figures are 0.5591, identical to the digit. The
+effective count is free where it is not needed and substantial where it is, so
+it is what the deflation uses; both figures come back, and so do all three
+estimates of the count, because they disagree — 2.49, 3.00 and 1.08 on the same
+data.
+
+**A Sharpe ratio here is per period, and its standard error is always beside
+it.** The number people quote is annualised and these formulas take the
+unannualised one, which is the quietest way to get a wrong answer out of this
+group. The standard error is usually the answer anyway: an annualised 1.0 over
+252 observations carries an annualised standard error of 1.00, and over 30
+observations of 2.90.
+
+**The bootstrap tools are seeded and say so.** `superior_predictive_ability`
+resamples, so an unseeded call would return a different p-value each time, which
+would make the idempotent annotation a lie and make two runs look like a change
+in the data. The seed defaults to a fixed value and comes back in the result, so
+a figure can be reproduced from the result alone.
+
+**Refusals, because everything in this group will compute.** A deflated Sharpe
+from four observations is a number. An overfitting probability from two
+strategies is a number, drawn from a two-point distribution — with `k`
+strategies the logit takes at most `k` distinct values, measured at 2 for two
+strategies and 3 for three — and it prints to four decimal places exactly like a
+real one. Skewness and kurtosis are refused when no distribution could have
+them: every distribution satisfies `kurtosis >= 1 + skewness^2`, so a skewness
+of -1.5 needs an excess kurtosis of at least 0.25.
 
 ## Checking a server against the specification
 

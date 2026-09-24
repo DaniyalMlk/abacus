@@ -114,9 +114,9 @@ exercised end to end, and covered by tests that run.
 
 - [x] Implementation shortfall decomposition over an order, its fills and the market
 - [x] Optimal execution trajectory and the cost-risk frontier
-- [ ] Deflated Sharpe ratio, minimum track record length and effective trial count
-- [ ] Probability of backtest overfitting and the test for superior predictive ability
-- [ ] Refusals rather than numbers when the inputs cannot support one
+- [x] Deflated Sharpe ratio, minimum track record length and effective trial count
+- [x] Probability of backtest overfitting and the test for superior predictive ability
+- [x] Refusals rather than numbers when the inputs cannot support one
 
 ## Phase 12 — The skill
 
