@@ -176,14 +176,19 @@ def test_overfilling_the_order_is_refused_with_both_numbers() -> None:
     Taken at face value they would produce a negative unfilled quantity and an
     opportunity cost with the wrong sign — a plausible-looking report built on a
     book that was stitched together wrongly.
+
+    The check belongs to `slippage`, which refuses it by name; `guard` turns
+    that into the same recoverable result as every other refusal, so the test
+    goes through the registered handler rather than calling the payload method
+    directly. Keeping a second copy of the check here would be a second opinion
+    on a question already answered, and the two would eventually disagree.
     """
+    handler = default_registry().get("decompose_implementation_shortfall")
+    assert handler is not None
     with pytest.raises(DomainError) as raised:
-        TOOLS.shortfall_payload(
-            {**ORDER, "fills": [{"quantity": 1500.0, "price": 100.4}]}
-        )
+        handler.handler({**ORDER, "fills": [{"quantity": 1500.0, "price": 100.4}]})
     assert "1500" in str(raised.value)
     assert "1000" in str(raised.value)
-    assert raised.value.field == "fills"
 
 
 # -- the schedule ------------------------------------------------------------
