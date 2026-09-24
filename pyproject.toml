@@ -95,8 +95,13 @@ addopts = "-q"
 # mypy checks against whatever it is running on, which is the version being
 # tested anyway.
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "docs"]
 warn_unreachable = true
+# The documentation generator imports `claims` as a sibling rather than as a
+# package, because it is a script run from the repository root rather than
+# something installed. The checker needs the same path the script puts on
+# sys.path to resolve it.
+mypy_path = "docs"
 
 # `tomllib` entered the standard library in 3.11, and mypy resolves imports
 # against the interpreter it is run under. The metadata tests' guarded

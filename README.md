@@ -1,6 +1,23 @@
 # abacus
 
-An MCP server that exposes option and portfolio analytics as tools.
+An MCP server that exposes option, portfolio, execution and backtest analytics
+as tools.
+
+```bash
+pip install abacus-mcp
+abacus tools          # the whole surface, in one screen
+abacus stdio          # what an MCP client launches
+```
+
+Nothing to install if you have [`uv`](https://docs.astral.sh/uv/) — `uvx
+abacus-mcp stdio` fetches it, runs it and caches it. Registering it with a
+client is [one entry naming that command](#registering-it-with-a-client).
+
+**[Documentation](https://daniyalmlk.github.io/abacus/)** — the conventions
+worth reading before the first call, every tool with its arguments, and the
+numbers this project claims with the test that checks each one.
+
+---
 
 Language models are unreliable at arithmetic, so the useful thing a tool
 boundary can do is move the numbers somewhere trustworthy. `abacus` puts them in
@@ -9,11 +26,15 @@ high-precision references and published results, and exposes those cores over th
 Model Context Protocol. Nothing here wraps a third-party pricing API: the numbers
 are computed by these libraries and tested where they live.
 
-It targets MCP revision **2026-07-28** and has three runtime dependencies, all pure
-Python with none of their own:
-[`moneyness`](https://github.com/DaniyalMlk/moneyness) for the option mathematics,
-[`shortfall`](https://github.com/DaniyalMlk/shortfall) for the portfolio risk
-estimators and [`tenor`](https://github.com/DaniyalMlk/tenor) for curves and bonds.
+It targets MCP revision **2026-07-28** and has five runtime dependencies, all
+pure Python: [`moneyness`](https://github.com/DaniyalMlk/moneyness) for the
+option mathematics, [`shortfall`](https://github.com/DaniyalMlk/shortfall) for
+the portfolio risk estimators, [`tenor`](https://github.com/DaniyalMlk/tenor)
+for curves and bonds, [`slippage`](https://github.com/DaniyalMlk/slippage) for
+execution cost and [`holdout`](https://github.com/DaniyalMlk/holdout) for
+backtest validation. The last two install as `slippage-tca` and
+`holdout-backtest`, because the short names on the index belong to unrelated
+projects; their import names are unchanged.
 
 ## Running it
 
@@ -326,6 +347,28 @@ second — and enforces a budget on the tool listing, which is 115,162 character
 today against a ceiling of 140,000, with no single tool over 12,000. The listing
 is loaded before any work happens and grows with every group added, so the
 ceiling exists to make crossing it a decision rather than a drift.
+
+## The documentation site
+
+[`docs/build.py`](docs/build.py) renders
+[the site](https://daniyalmlk.github.io/abacus/) from the live registry — every
+tool entry is the object a client receives from `tools/list`, so a renamed
+argument changes the page on the next build and there is no version of it that
+is confidently wrong. The prose around it is written: the conventions, the
+validated-numbers commentary, and a page on the libraries underneath and when to
+import them directly instead.
+
+```bash
+python docs/build.py     # writes site/, standard library only
+```
+
+The **validated numbers** page is the part worth knowing about. Every specific
+figure this project prints was measured rather than guessed, and
+[`docs/claims.py`](docs/claims.py) names, for each one, the test that measures
+it. `tests/test_docs.py` then asserts that each of those tests exists, that the
+figure appears in its source, and that all of them pass. A number that changes in
+the code and not on the page fails a build rather than going on reading as
+authoritative.
 
 ## Checking a server against the specification
 
