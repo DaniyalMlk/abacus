@@ -1,0 +1,71 @@
+name: pages
+
+# Only from the default branch. A documentation site published from a feature
+# branch would describe a server that nobody can install yet, which is a worse
+# failure than being a commit behind.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deployment at a time, and a newer one wins. Cancelling an in-flight
+# publish is safe here because the site is rebuilt from scratch every run, so
+# there is no partial state for the next one to inherit.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build the site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: ./.github/actions/dependency-wheelhouse
+
+      # The generator imports the server to read its registry, so the server has
+      # to be installed. That is the point: the site is a rendering of the tools
+      # that exist rather than a description of the ones somebody remembered.
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # Before building, not after. The build itself will happily produce a page
+      # whose figures have drifted from the code; these are what say they have
+      # not, and publishing first would mean the wrong numbers were public for
+      # however long the failure took to notice.
+      - name: The documentation agrees with the code it documents
+        run: pytest tests/test_docs.py tests/test_skill.py -q
+
+      - name: Build
+        run: python docs/build.py
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: publish
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # Split from the build for the same reason the release workflow is: the job
+    # that holds the publishing identity checks out no code and runs none of
+    # this project's, so there is nothing in it that could reach what it holds.
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

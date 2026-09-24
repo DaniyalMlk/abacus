@@ -127,7 +127,7 @@ exercised end to end, and covered by tests that run.
 
 ## Phase 13 — Documentation
 
-- [ ] A published documentation site: tools, conventions, worked examples
-- [ ] README rewritten around what a user has working in the first minute
-- [ ] A validation table: every number the documentation claims, and where it is checked
-- [ ] One page explaining what each library underneath does and when to use it directly
+- [x] A published documentation site: tools, conventions, worked examples
+- [x] README rewritten around what a user has working in the first minute
+- [x] A validation table: every number the documentation claims, and where it is checked
+- [x] One page explaining what each library underneath does and when to use it directly
