@@ -46,10 +46,17 @@ classifiers = [
 # An ordinary version range, not a direct URL. A `name @ git+https://...`
 # requirement installs locally and is rejected outright on upload to a package
 # index, which is the single reason this project could not be published at all.
+# Two of these are named for the distribution rather than for the module they
+# provide: `slippage` and `holdout` on the index belong to unrelated projects, so
+# those libraries publish as `slippage-tca` and `holdout-backtest` while their
+# import names stay as they are. A requirement is a distribution name, so this is
+# the name that belongs here, and `import slippage` in the code below is correct
+# at the same time.
 dependencies = [
     "moneyness>=0.1,<0.2",
     "shortfall>=0.1,<0.2",
     "tenor>=0.1,<0.2",
+    "slippage-tca>=0.1,<0.2",
 ]
 
 [project.urls]
@@ -80,10 +87,23 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.mypy]
-python_version = "3.11"
+# Deliberately not pinned to one version. Pinning it makes mypy read the
+# installed stubs as though they were written for that version, and numpy's
+# stubs use a `type` statement that is a syntax error below 3.12 — so a pin of
+# 3.11 fails on a 3.12 interpreter, on a file nobody here wrote. Left unset,
+# mypy checks against whatever it is running on, which is the version being
+# tested anyway.
 strict = true
 files = ["src", "tests"]
 warn_unreachable = true
+
+# `tomllib` entered the standard library in 3.11, and mypy resolves imports
+# against the interpreter it is run under. The metadata tests' guarded
+# `import tomllib` — behind a skipif on the same version — is the only mention
+# of it in the tree, and on 3.10 it would otherwise be an unresolvable import.
+[[tool.mypy.overrides]]
+module = ["tomllib"]
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 100

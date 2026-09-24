@@ -114,6 +114,9 @@ It exits non-zero on a failure, so it works as a gate rather than a report.
 | `bond_analytics` | Price, yield, duration and convexity, from a yield and from a curve |
 | `bond_curve_risk` | Key rate durations, curve shape risk, and the tradeable hedge |
 | `bond_spreads` | Z-spread, I-spread, and option-adjusted spread off a calibrated lattice |
+| `decompose_implementation_shortfall` | What an order cost, split into delay, trading, opportunity and explicit |
+| `optimal_execution_schedule` | The Almgren-Chriss trajectory, its cost, and the half-life's elasticities |
+| `execution_cost_frontier` | Expected cost against cost risk, one schedule per risk aversion |
 
 Conventions, which are also stated in the server's instructions and in every
 schema description: volatilities and rates are decimal fractions, so 20% is
@@ -201,6 +204,57 @@ it is wrong.
 A zero rate at the curve's reference date comes back as null rather than zero. The
 discount factor there is one whatever the rate is, so no rate is implied, and a zero
 would read as a rate rather than as the absence of one.
+
+## Execution
+
+Two questions sit either side of a trade, and both are about the gap between the
+price a model priced and the price that happened.
+
+```bash
+abacus tools | grep -A2 decompose_implementation_shortfall
+```
+
+**After the fact.** `decompose_implementation_shortfall` takes an order, its
+fills and three prices, and splits what it cost four ways. The total is the least
+useful number in the result: a trade that cost 87 basis points tells you to feel
+bad, while the same trade split into 20 of delay, 51 of trading, 15 of
+opportunity and 1 of commission tells you which thing to change. Delay is the
+price moving before the order reached the market, and is fixed by shortening that
+gap. Trading is the order's own footprint, and is fixed by spreading it out.
+Opportunity is the part that never got done. Commission is a contract.
+
+Fill timestamps are not required. `slippage.Order` carries them for its volume
+work, but the decomposition reads only quantities, prices and commissions and
+gives an identical breakdown at one-minute and six-hour fill spacings — so asking
+for them would be asking for data to be invented.
+
+Whether delay is charged on the quantity *ordered* or the quantity *executed* is
+a house convention, and it matters more than it looks. On the worked order above
+the order basis gives a delay of 200 and an opportunity of 150; the executed
+basis gives 180 and 170. The total is 869 either way. It is a reattribution that
+survives a check on the headline, which is exactly how two desks end up agreeing
+on the cost and disagreeing on the cause, so every result names the basis it
+used.
+
+**Before the fact.** `optimal_execution_schedule` lays the order out against
+impact and price risk. At zero risk aversion the answer is a straight line — an
+equal slice each period, which is TWAP — and raising the aversion front-loads the
+schedule, paying more impact to spend less time exposed. `execution_cost_frontier`
+does the same across a range of aversions, because a single optimal schedule
+answers a question the caller has already had to answer.
+
+Two notes on the model. A fixed cost per share is paid whatever the order is
+traded in, so it moves the expected cost by exactly itself and does not move a
+single trade. Permanent impact is the one the textbook says drops out of the
+schedule, and in continuous time it does; in discrete time it enters through
+`eta - gamma*tau/2` and the leftover is of the order of the period length —
+measured here, it shortens the half-life by 2.5% at `tau = 1`, 0.25% at
+`tau = 0.1` and 0.025% at `tau = 0.01`.
+
+A risk-neutral schedule's half-life is infinite, and it comes back as `null`
+rather than as a number. `Infinity` is not JSON: a strict parser rejects the
+whole message over it, so one unbounded quantity would take every number beside
+it down.
 
 ## Checking a server against the specification
 
