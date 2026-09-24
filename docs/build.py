@@ -29,11 +29,11 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from claims import CLAIMS  # noqa: E402
+from claims import CLAIMS
 
-from abacus import __version__  # noqa: E402
-from abacus.analytics import default_registry  # noqa: E402
-from abacus.protocol import SUPPORTED_VERSIONS  # noqa: E402
+from abacus import __version__
+from abacus.analytics import default_registry
+from abacus.protocol import SUPPORTED_VERSIONS
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "site"
@@ -384,9 +384,21 @@ rather than misread as an empty one of the right kind.</p>
 <div class="scroller"><table class="wide">
 <thead><tr><th>Minted by</th><th>Carries</th><th>Cannot be used for</th></tr></thead>
 <tbody>
-<tr><td class="figure">open_position_book</td><td>option and underlying legs, the spot, the rate</td><td>anything expecting a covariance estimate</td></tr>
-<tr><td class="figure">estimate_return_moments</td><td>a mean vector and a covariance matrix &mdash; not the returns</td><td>the historical and drawdown tools, which read the path</td></tr>
-<tr><td class="figure">bootstrap_discount_curve</td><td>the pillar times and their quotes</td><td>either of the above</td></tr>
+<tr>
+<td class="figure">open_position_book</td>
+<td>option and underlying legs, the spot, the rate</td>
+<td>anything expecting a covariance estimate</td>
+</tr>
+<tr>
+<td class="figure">estimate_return_moments</td>
+<td>a mean vector and a covariance matrix &mdash; not the returns</td>
+<td>the historical and drawdown tools, which read the path</td>
+</tr>
+<tr>
+<td class="figure">bootstrap_discount_curve</td>
+<td>the pillar times and their quotes</td>
+<td>either of the above</td>
+</tr>
 </tbody>
 </table></div>
 
@@ -550,11 +562,36 @@ wire format, and none of that is useful inside a process.</p>
 <div class="scroller"><table class="wide">
 <thead><tr><th>Install</th><th>Import</th><th>What it does</th></tr></thead>
 <tbody>
-<tr><td class="figure">moneyness</td><td class="figure">moneyness</td><td>Option pricing, the full Greek set, implied volatility, SVI surfaces, local volatility and American exercise.</td></tr>
-<tr><td class="figure">shortfall</td><td class="figure">shortfall</td><td>Shrinkage covariance, value at risk and expected shortfall by five methods, risk contributions, risk parity and drawdown statistics.</td></tr>
-<tr><td class="figure">tenor</td><td class="figure">tenor</td><td>Day counts, business-day conventions, curve bootstrapping, bond analytics, key rate durations and option-adjusted spreads.</td></tr>
-<tr><td class="figure">slippage-tca</td><td class="figure">slippage</td><td>Implementation shortfall, market impact fitting, Almgren-Chriss schedules, constrained scheduling and volume curves.</td></tr>
-<tr><td class="figure">holdout-backtest</td><td class="figure">holdout</td><td>Deflated Sharpe ratios, effective trial counts, backtest overfitting probability, purged cross-validation and tests for superior predictive ability.</td></tr>
+<tr>
+<td class="figure">moneyness</td>
+<td class="figure">moneyness</td>
+<td>Option pricing, the full Greek set, implied volatility, SVI surfaces, local volatility and
+American exercise.</td>
+</tr>
+<tr>
+<td class="figure">shortfall</td>
+<td class="figure">shortfall</td>
+<td>Shrinkage covariance, value at risk and expected shortfall by five methods, risk
+contributions, risk parity and drawdown statistics.</td>
+</tr>
+<tr>
+<td class="figure">tenor</td>
+<td class="figure">tenor</td>
+<td>Day counts, business-day conventions, curve bootstrapping, bond analytics, key rate
+durations and option-adjusted spreads.</td>
+</tr>
+<tr>
+<td class="figure">slippage-tca</td>
+<td class="figure">slippage</td>
+<td>Implementation shortfall, market impact fitting, Almgren-Chriss schedules, constrained
+scheduling and volume curves.</td>
+</tr>
+<tr>
+<td class="figure">holdout-backtest</td>
+<td class="figure">holdout</td>
+<td>Deflated Sharpe ratios, effective trial counts, backtest overfitting probability, purged
+cross-validation and tests for superior predictive ability.</td>
+</tr>
 </tbody>
 </table></div>
 
