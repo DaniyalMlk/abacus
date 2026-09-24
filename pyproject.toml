@@ -87,10 +87,23 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.mypy]
-python_version = "3.11"
+# Deliberately not pinned to one version. Pinning it makes mypy read the
+# installed stubs as though they were written for that version, and numpy's
+# stubs use a `type` statement that is a syntax error below 3.12 — so a pin of
+# 3.11 fails on a 3.12 interpreter, on a file nobody here wrote. Left unset,
+# mypy checks against whatever it is running on, which is the version being
+# tested anyway.
 strict = true
 files = ["src", "tests"]
 warn_unreachable = true
+
+# `tomllib` entered the standard library in 3.11, and mypy resolves imports
+# against the interpreter it is run under. The metadata tests' guarded
+# `import tomllib` — behind a skipif on the same version — is the only mention
+# of it in the tree, and on 3.10 it would otherwise be an unresolvable import.
+[[tool.mypy.overrides]]
+module = ["tomllib"]
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 100
