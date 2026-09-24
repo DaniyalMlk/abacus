@@ -9,9 +9,27 @@ abacus tools          # the whole surface, in one screen
 abacus stdio          # what an MCP client launches
 ```
 
-Nothing to install if you have [`uv`](https://docs.astral.sh/uv/) — `uvx
-abacus-mcp stdio` fetches it, runs it and caches it. Registering it with a
-client is [one entry naming that command](#registering-it-with-a-client).
+> **Not on the package index yet.** The lines above are what they will be. Until
+> the first release lands, install from source — the server depends on five
+> sibling libraries, so they go first and then nothing has to be resolved by
+> name:
+>
+> ```bash
+> pip install \
+>   "git+https://github.com/DaniyalMlk/moneyness.git" \
+>   "git+https://github.com/DaniyalMlk/shortfall.git" \
+>   "git+https://github.com/DaniyalMlk/tenor.git" \
+>   "git+https://github.com/DaniyalMlk/slippage.git" \
+>   "git+https://github.com/DaniyalMlk/holdout.git"
+> pip install "git+https://github.com/DaniyalMlk/abacus.git"
+> ```
+>
+> `abacus tools` and `abacus stdio` then work exactly as above.
+
+Once released, nothing needs installing at all if you have
+[`uv`](https://docs.astral.sh/uv/) — `uvx abacus-mcp stdio` fetches it, runs it
+and caches it. Registering it with a client is
+[one entry naming that command](#registering-it-with-a-client).
 
 **[Documentation](https://daniyalmlk.github.io/abacus/)** — the conventions
 worth reading before the first call, every tool with its arguments, and the

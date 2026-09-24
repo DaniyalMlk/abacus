@@ -39,6 +39,15 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "site"
 SOURCE = "https://github.com/DaniyalMlk/abacus"
 
+#: The from-source install, for as long as nothing is on the package index. The
+#: shell line-continuations are joined here rather than written as a literal
+#: block: this module is Python source, and a backslash before a newline inside
+#: a string literal is a line continuation that silently removes both.
+_LIBRARIES = ("moneyness", "shortfall", "tenor", "slippage", "holdout")
+FROM_SOURCE = " \\\n  ".join(
+    ["pip install"] + [f'"git+{SOURCE.rsplit("/", 1)[0]}/{name}.git"' for name in _LIBRARIES]
+) + f'\npip install "git+{SOURCE}.git"'
+
 
 @dataclass(frozen=True)
 class Group:
@@ -291,12 +300,23 @@ cannot be.</p>
 </div>
 
 <h2>The first minute</h2>
-<pre><code>pip install abacus-mcp
+<p>The server and its five libraries are not on the package index yet, so today
+it installs from source. Both halves of that are one command, and nothing has to
+be resolved by name once the libraries are in place:</p>
+<pre><code>{FROM_SOURCE}
+
 abacus tools          # what it can do
 abacus stdio          # serve over stdio
 </code></pre>
-<p>Or point a client at it without installing anything:</p>
-<pre><code>uvx abacus-mcp stdio</code></pre>
+
+<div class="note">
+<p><strong>After the first release</strong> the whole thing becomes
+<code>pip install abacus-mcp</code>, or <code>uvx abacus-mcp stdio</code> with no
+install at all. This page will say so when that is true rather than before
+&mdash; a documented command that does not work is worse than an undocumented
+one, because it fails in the reader's terminal rather than on the page.</p>
+</div>
+
 <p>Registering it with a client means one entry naming that command. The
 <a href="{SOURCE}#registering-it-with-a-client">README</a> has the exact shape
 for the common ones.</p>
