@@ -434,11 +434,10 @@ class ValidationTools:
             "stepdown": {
                 "alpha": stepdown.alpha,
                 "adjustedPValues": [_finite(value) for value in stepdown.adjusted_pvalues],
-                "rejected": [
-                    candidates[index]
-                    for index, flag in enumerate(stepdown.rejected)
-                    if bool(flag)
-                ],
+                # `rejected` is already a list of column indices, strongest
+                # first — not a mask. Enumerating it and treating the entries as
+                # flags looks right and silently returns the wrong strategies.
+                "rejected": [candidates[int(index)] for index in stepdown.rejected],
             },
         }
 
@@ -544,7 +543,12 @@ class ValidationTools:
                             "Excess kurtosis: zero for a normal distribution. "
                             "Given as excess rather than raw, because the two "
                             "differ by three and a raw 3.0 entered here as excess "
-                            "quietly lengthens the answer."
+                            "quietly lengthens the answer. It is not independent "
+                            "of the skewness: every distribution satisfies "
+                            "kurtosis >= 1 + skewness^2, so an excess kurtosis "
+                            "below skewness^2 - 2 describes nothing and is "
+                            "refused rather than used. A skewness of -1.5 "
+                            "therefore needs an excess kurtosis of at least 0.25."
                         ),
                     },
                     "periodsPerYear": _PERIODS_PER_YEAR,
