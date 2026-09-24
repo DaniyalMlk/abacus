@@ -112,8 +112,8 @@ exercised end to end, and covered by tests that run.
 
 ## Phase 11 — Execution and backtest-validation tools
 
-- [ ] Implementation shortfall decomposition over an order, its fills and the market
-- [ ] Optimal execution trajectory and the cost-risk frontier
+- [x] Implementation shortfall decomposition over an order, its fills and the market
+- [x] Optimal execution trajectory and the cost-risk frontier
 - [ ] Deflated Sharpe ratio, minimum track record length and effective trial count
 - [ ] Probability of backtest overfitting and the test for superior predictive ability
 - [ ] Refusals rather than numbers when the inputs cannot support one

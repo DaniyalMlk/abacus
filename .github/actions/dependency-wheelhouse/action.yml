@@ -15,6 +15,11 @@ description: >
 # without weakening the declared requirement. The resolution path is the same one
 # an index install takes; only the source of the file differs.
 #
+# The repository is not always the distribution name: `slippage` publishes as
+# `slippage-tca`, because the short name on the index belongs to somebody else.
+# That does not matter here — pip reads the name out of the built wheel — but it
+# is why the list below does not match `pyproject.toml` line for line.
+#
 # When the libraries are released, delete this directory and every `uses:` line that
 # references it. Nothing else in either workflow depends on it.
 
@@ -26,6 +31,7 @@ inputs:
       https://github.com/DaniyalMlk/moneyness.git
       https://github.com/DaniyalMlk/shortfall.git
       https://github.com/DaniyalMlk/tenor.git
+      https://github.com/DaniyalMlk/slippage.git
   wheelhouse:
     description: Directory the built wheel is placed in.
     required: false
@@ -39,8 +45,9 @@ runs:
       run: |
         python -m pip install --upgrade pip wheel
         for repository in ${{ inputs.repositories }}; do
-          # --no-deps because neither library has any, and asking pip to resolve
-          # them would send it to the index for packages that need not be there.
+          # --no-deps stops pip going to the index for each library's own
+          # requirements while building it. They are resolved normally by the
+          # install that follows, from the index, where they exist.
           python -m pip wheel --no-deps -w "${{ inputs.wheelhouse }}" \
             "git+$repository"
         done
