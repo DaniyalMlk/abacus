@@ -37,18 +37,18 @@ result names the basis it used.
 
 **Fill timestamps are not required, because the decomposition does not read
 them.** ``slippage.Order`` carries them because the rest of that library — the
-volume curves, the participation-rate work — needs them. The shortfall
-decomposition reads only the quantities, prices and commissions: feeding the same
-fills at one-minute and at six-hour spacings gives an identical breakdown to
-every digit. Requiring a model to invent ISO timestamps to satisfy a field
-nothing consumes would be asking for fabricated data, so this tool takes fills
-without them and says here why it can.
+volume curves, the participation-rate work — needs them, and the shortfall
+decomposition reads only the quantities, prices and commissions: the same fills
+at one-minute and at six-hour spacings give an identical breakdown to every
+digit. This tool therefore goes to ``shortfall_from_totals``, which takes the
+totals and no times at all, rather than building an ``Order`` around invented
+ones. Fabricated values look like data to everything downstream, and nothing in
+a type says which of its fields were real.
 """
 
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta
 from typing import Any
 
 from slippage import (
@@ -56,17 +56,15 @@ from slippage import (
 )
 from slippage import (
     ExecutionProblem,
-    Fill,
     LinearImpact,
-    Order,
     Side,
     Trajectory,
     efficient_frontier,
     half_life_sensitivity,
-    implementation_shortfall,
     linear_trajectory,
     optimal_trajectory,
     schedule_moments,
+    shortfall_from_totals,
 )
 
 from .analytics import guard
@@ -87,12 +85,6 @@ MAX_PERIODS = 500
 
 #: Most points a frontier may hold. Each one is a full trajectory solve.
 MAX_FRONTIER_POINTS = 50
-
-#: A stand-in origin for fills that arrive without timestamps. Nothing in the
-#: decomposition reads these; see the module docstring. They are spaced by a
-#: minute so that the order they were given in survives, which keeps the
-#: ``slippage`` invariant that fills are chronological.
-_EPOCH = datetime(2000, 1, 1, 0, 0, 0)
 
 
 # -- schema fragments --------------------------------------------------------
@@ -245,39 +237,28 @@ def _side(value: str) -> Side:
     return Side.BUY if value == "buy" else Side.SELL
 
 
-def _order(args: dict[str, Any]) -> Order:
-    """Build an order from the arguments, checking what the schema cannot."""
-    quantity = float(args["quantity"])
+def _totals(args: dict[str, Any]) -> dict[str, Any]:
+    """Reduce the fills to the totals the decomposition reads, and nothing else.
+
+    ``slippage.shortfall_from_totals`` takes the side, the two quantities, what
+    the executed shares cost in total, and the explicit costs. It does not take
+    a time, because the decomposition does not read one — which is what lets
+    this tool accept fills without timestamps rather than inventing them.
+
+    The overfill check belongs to the library and is left there. This function
+    totals and converts; anything it also validated would be a second opinion
+    on a question already answered, and the two would eventually disagree.
+    """
     fills = args["fills"]
-
-    filled = math.fsum(float(fill["quantity"]) for fill in fills)
-    if filled > quantity * (1 + 1e-9):
-        raise DomainError(
-            f"the fills total {filled:g} against an order for {quantity:g}. An order "
-            "cannot be overfilled; if these fills belong to more than one order, "
-            "decompose them one order at a time, because the opportunity cost is "
-            "measured against a single order's unfilled remainder.",
-            field="fills",
-        )
-
-    built = tuple(
-        Fill(
-            timestamp=_EPOCH + timedelta(minutes=index),
-            quantity=float(fill["quantity"]),
-            price=float(fill["price"]),
-            commission=float(fill.get("commission", 0.0)),
-        )
-        for index, fill in enumerate(fills)
-    )
-    return Order(
-        symbol=str(args.get("symbol", "order")),
-        side=_side(args["side"]),
-        quantity=quantity,
-        decision_time=_EPOCH,
-        arrival_time=_EPOCH,
-        fills=built,
-        decision_price=float(args.get("decisionPrice", args["arrivalPrice"])),
-    )
+    return {
+        "side": Side.BUY if args["side"] == "buy" else Side.SELL,
+        "quantity": float(args["quantity"]),
+        "filled_quantity": math.fsum(float(fill["quantity"]) for fill in fills),
+        "executed_notional": math.fsum(
+            float(fill["quantity"]) * float(fill["price"]) for fill in fills
+        ),
+        "commission": math.fsum(float(fill.get("commission", 0.0)) for fill in fills),
+    }
 
 
 def _problem(args: dict[str, Any]) -> ExecutionProblem:
@@ -366,16 +347,14 @@ class ExecutionTools:
     """The execution tool group."""
 
     def shortfall_payload(self, args: dict[str, Any]) -> dict[str, Any]:
-        order = _order(args)
         arrival = float(args["arrivalPrice"])
-        final = float(args["finalPrice"])
         basis = SlippageDelayBasis(args.get("delayBasis", "order"))
 
-        breakdown = implementation_shortfall(
-            order,
+        breakdown = shortfall_from_totals(
+            **_totals(args),
+            decision_price=float(args.get("decisionPrice", arrival)),
             arrival_price=arrival,
-            final_price=final,
-            decision_price=order.decision_price,
+            final_price=float(args["finalPrice"]),
             fees=float(args.get("fees", 0.0)),
             half_spread=args.get("halfSpread"),
             delay_basis=basis,
@@ -395,7 +374,7 @@ class ExecutionTools:
             "targetQuantity": breakdown.target_quantity,
             "filledQuantity": breakdown.filled_quantity,
             "unfilledQuantity": round(breakdown.target_quantity - breakdown.filled_quantity, 10),
-            "fillRate": round(order.fill_rate, 10),
+            "fillRate": round(breakdown.filled_quantity / breakdown.target_quantity, 10),
             "decisionPrice": breakdown.decision_price,
             "arrivalPrice": breakdown.arrival_price,
             "finalPrice": breakdown.final_price,
