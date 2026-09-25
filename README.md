@@ -148,11 +148,13 @@ It exits non-zero on a failure, so it works as a gate rather than a report.
 | `portfolio_risk_contributions` | Euler risk contributions, concentration, effective bets |
 | `risk_parity_weights` | Weights that equalise risk contributions, with the convergence evidence |
 | `portfolio_drawdown` | Deepest drawdown, time underwater, ulcer index, Calmar and Sortino |
+| `validate_risk_model` | Whether a value-at-risk forecast worked: coverage, clustering, traffic light |
 | `bootstrap_discount_curve` | A curve from deposits, futures and par swaps, with a reusable handle |
 | `discount_curve_rates` | Discount factors, zero rates and forwards at whatever dates you ask for |
 | `bond_analytics` | Price, yield, duration and convexity, from a yield and from a curve |
 | `bond_curve_risk` | Key rate durations, curve shape risk, and the tradeable hedge |
 | `bond_spreads` | Z-spread, I-spread, and option-adjusted spread off a calibrated lattice |
+| `bond_carry_rolldown` | What a position earns to a horizon, split into carry and roll-down |
 | `decompose_implementation_shortfall` | What an order cost, split into delay, trading, opportunity and explicit |
 | `optimal_execution_schedule` | The Almgren-Chriss trajectory, its cost, and the half-life's elasticities |
 | `execution_cost_frontier` | Expected cost against cost risk, one schedule per risk aversion |
