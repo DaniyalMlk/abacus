@@ -44,6 +44,7 @@ from datetime import date
 from typing import Any
 
 from tenor import (
+    BadHorizon,
     Basis,
     Bond,
     Compounding,
@@ -60,6 +61,7 @@ from tenor import (
     bootstrap,
     buckets_from,
     curvature,
+    horizon_return,
     i_spread,
     instrument_risk,
     key_rates,
@@ -808,6 +810,80 @@ class CurveTools:
                 }
         return payload
 
+    def horizon_payload(self, args: dict[str, Any]) -> dict[str, Any]:
+        curve, _ = self._curve(args)
+        reference = curve.reference
+        bond = _bond(args["bond"], reference)
+        settlement = _day(args["settlement"], "settlement") if "settlement" in args else reference
+        horizon = _day(args["horizon"], "horizon")
+        try:
+            found = horizon_return(bond, curve, settlement, horizon)
+        except BadHorizon as bad:
+            raise DomainError(str(bad), field="horizon") from bad
+
+        return {
+            "bond": bond.name,
+            "settlement": settlement.isoformat(),
+            "horizon": horizon.isoformat(),
+            "periodYears": found.period,
+            "startPrice": found.start_price,
+            "forwardPrice": found.forward_price,
+            "rolledPrice": found.rolled_price,
+            "coupons": [
+                {
+                    "date": one.day.isoformat(),
+                    "amount": one.amount,
+                    "valueAtHorizon": one.value_at_horizon,
+                }
+                for one in found.coupons
+            ],
+            "couponIncome": found.coupon_income,
+            "forwardPriceChange": found.forward_price_change,
+            "financingRate": found.financing_rate,
+            "financingCost": found.financing_cost,
+            "carry": found.carry,
+            "incomeLessFinancing": found.income_less_financing,
+            "rollDown": found.roll_down,
+            "totalReturn": found.total_return,
+            "totalReturnBasisPoints": found.total_return_bps,
+            "excessOverFinancing": found.excess_over_financing,
+            # The identity this whole decomposition rests on. A curve that
+            # fails it is not self-consistent, and every figure above is then
+            # a number about that inconsistency rather than about the bond.
+            "arbitrageFree": found.is_arbitrage_free(),
+            "note": (
+                "Every amount is per 100 of face and every price is DIRTY. Clean "
+                "prices are the wrong unit here: accrued interest is part of what a "
+                "holder earns over the period, and netting it out of the price "
+                "without adding it back to income loses it.\n\n"
+                "`carry` is coupon income plus the forward price change, and on an "
+                "arbitrage-free curve it is IDENTICALLY the financing cost — "
+                "`arbitrageFree` asserts that to within a hundredth of a basis point "
+                "of price. So carry is not a source of return. A bond held to a "
+                "horizon on a curve that evolves to its own forwards earns its "
+                "funding cost and nothing else.\n\n"
+                "The whole of the expected excess return is `rollDown`: the curve "
+                "failing to evolve to its forwards, so the bond ages into a "
+                "different point on an unchanged spot curve. It is positive on an "
+                "upward-sloping curve, negative on an inverted one, and exactly zero "
+                "on a flat one. `excessOverFinancing` equals it, which is the "
+                "finding rather than a coincidence of the arithmetic.\n\n"
+                "`incomeLessFinancing` is the market's OTHER definition of carry and "
+                "is reported because the word is used both ways. Do not rank "
+                "positions on it: a 9% bond can show +4.83 against a zero-coupon "
+                "bond's -2.00 and go on to earn 27 basis points LESS over the year, "
+                "because the high coupon is paid for by a price falling towards par "
+                "by the same amount.\n\n"
+                "Coupons inside the window are reinvested at the curve's own forward "
+                "rates. That is the only assumption under which the identity holds; "
+                "reinvesting at a chosen rate would make carry differ from the "
+                "financing cost by the size of the view.\n\n"
+                "The horizon must fall strictly before maturity. A redeemed bond has "
+                "no price to roll to, so there is no price change to decompose — "
+                "that is refused rather than reported as zero."
+            ),
+        }
+
     def curve_risk_payload(self, args: dict[str, Any]) -> dict[str, Any]:
         curve, quotes = self._curve(args)
         bond = _bond(args["bond"], curve.reference)
@@ -1249,6 +1325,46 @@ class CurveTools:
             },
             annotations=read_only,
         )(guard(self.curve_risk_payload))
+
+        registry.register(
+            "bond_carry_rolldown",
+            title="Holding-period return: carry and roll-down",
+            description=(
+                "What a bond position earns between settlement and a horizon if "
+                "nothing happens — and the split that matters, because 'nothing "
+                "happens' means two different things. If the curve evolves to its own "
+                "forwards the bond earns its funding cost and nothing else; that is an "
+                "identity, not an approximation, and the result asserts it. Everything "
+                "above the funding cost is roll-down: the bond ages, its remaining "
+                "maturity shortens, and on an unchanged spot curve it is repriced off "
+                "a lower point. On a curve running from 20bp to 220bp a ten-year bond "
+                "held for a year earns 279 basis points, of which 50 is financing and "
+                "249 is roll-down. Both market meanings of 'carry' are reported "
+                "because the word is used for both, and the conventional one can rank "
+                "two positions backwards."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    **reusable,
+                    "bond": _BOND,
+                    "settlement": _SETTLEMENT,
+                    "horizon": {
+                        **_DATE,
+                        "description": (
+                            "End of the holding period. Must fall after settlement and "
+                            "strictly before the bond's maturity: a redeemed bond has "
+                            "no price at the horizon, so there is no price change to "
+                            "decompose and the call is refused rather than answered "
+                            "with zero."
+                        ),
+                    },
+                },
+                "required": ["bond", "horizon"],
+                "additionalProperties": False,
+            },
+            annotations=read_only,
+        )(guard(self.horizon_payload))
 
         registry.register(
             "bond_spreads",
