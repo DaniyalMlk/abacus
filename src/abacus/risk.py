@@ -92,6 +92,7 @@ from shortfall import (
 from shortfall import (
     sortino as sortino_ratio,
 )
+from shortfall import validate as validate_risk_model
 from shortfall.parametric import is_monotone
 
 from .analytics import guard
@@ -131,6 +132,19 @@ WEIGHT_SUM_TOLERANCE = 0.02
 #: observations that a historical estimate is reading one or two of them, and a
 #: parametric one is extrapolating a shape nobody fitted out there.
 MAX_CONFIDENCE = 0.9999
+
+#: Most one-step-ahead forecasts a validation call may carry. A forecast series
+#: is one number per period, so this is twenty years of daily data — far more
+#: than the asymptotic tests need and well inside the transport's body limit.
+MAX_FORECASTS = 5_000
+
+#: Most replications the expected-shortfall null may be simulated with. The
+#: simulation is O(replications * observations) in pure Python, and the p-value
+#: it produces has a simulation error of its own around
+#: sqrt(p(1-p)/replications) — at 5000 a true 5% is resolved to about three
+#: tenths of a percentage point, and more replications buy a digit nobody
+#: should be reading.
+MAX_REPLICATIONS = 5_000
 
 _METHODS = ("normal", "student-t", "cornish-fisher", "historical", "filtered-historical")
 
@@ -1014,6 +1028,149 @@ class RiskTools:
             ),
         }
 
+    def validation_payload(self, args: dict[str, Any]) -> dict[str, Any]:
+        observed = [float(value) for value in args["returns"]]
+        forecasts = [float(value) for value in args["valueAtRisk"]]
+        confidence = float(args["confidence"])
+        if len(observed) != len(forecasts):
+            raise DomainError(
+                f"{len(observed)} returns against {len(forecasts)} forecasts. A "
+                "forecast series is one-step-ahead, so there is one forecast per "
+                "return and neither is offset — the first forecast is the one that "
+                "was made for the first return.",
+                field="valueAtRisk",
+            )
+        if len(observed) > MAX_FORECASTS:
+            raise DomainError(
+                f"{len(observed)} observations, above the limit of {MAX_FORECASTS}.",
+                field="returns",
+            )
+        shortfalls = args.get("expectedShortfall")
+        if shortfalls is not None:
+            shortfalls = [float(value) for value in shortfalls]
+            if len(shortfalls) != len(observed):
+                raise DomainError(
+                    f"{len(shortfalls)} expected-shortfall forecasts against "
+                    f"{len(observed)} returns.",
+                    field="expectedShortfall",
+                )
+        replications = int(args.get("replications", 0))
+        if replications > MAX_REPLICATIONS:
+            raise DomainError(
+                f"{replications} replications, above the limit of {MAX_REPLICATIONS}. "
+                "The p-value carries a simulation error around "
+                "sqrt(p(1-p)/replications), so past this the extra digit is noise.",
+                field="replications",
+            )
+        if replications and shortfalls is None:
+            raise DomainError(
+                "replications were asked for without `expectedShortfall`. The "
+                "simulation is of the expected-shortfall null; the coverage tests "
+                "have closed-form p-values and nothing to simulate.",
+                field="replications",
+            )
+        distribution = _DISTRIBUTIONS[args.get("distribution", "normal")]
+        if distribution is Distribution.CORNISH_FISHER:
+            raise DomainError(
+                "the simulated null draws from a distribution, and the "
+                "Cornish-Fisher correction is a quantile mapping rather than one. "
+                "Use normal or student-t.",
+                field="distribution",
+            )
+
+        try:
+            result = validate_risk_model(
+                observed,
+                forecasts,
+                confidence=confidence,
+                expected_shortfall=shortfalls,
+                distribution=distribution,
+                degrees=float(args.get("degrees", 5.0)),
+                replications=replications,
+                seed=int(args.get("seed", 0)),
+            )
+        except ValueError as bad:
+            raise DomainError(str(bad), field="valueAtRisk") from bad
+
+        breaches = result.exceedances
+        light = result.traffic_light
+        payload: dict[str, Any] = {
+            "observations": breaches.observations,
+            "confidence": confidence,
+            "tailProbability": 1.0 - confidence,
+            "breaches": breaches.count,
+            "expectedBreaches": breaches.expected,
+            "breachRate": breaches.rate,
+            "tests": [
+                {
+                    "name": test.name,
+                    "statistic": test.statistic,
+                    "degreesOfFreedom": test.degrees_of_freedom,
+                    "pValue": test.p_value,
+                    "rejectsAt5Percent": test.rejects_at(0.05),
+                    "rejectsAt1Percent": test.rejects_at(0.01),
+                    "interpretation": test.interpretation,
+                    # True when there are too few observations for the
+                    # chi-square limit these statistics are scored against.
+                    "advisory": test.advisory,
+                }
+                for test in (result.unconditional, result.independence, result.conditional)
+            ],
+            "trafficLight": {
+                "zone": light.zone.value,
+                "cumulativeProbability": light.cumulative_probability,
+                "plusFactor": light.plus_factor,
+                "supervisorySetup": light.plus_factor is not None,
+            },
+            "rejectedAt5Percent": list(result.rejected_at(0.05)),
+            "warnings": list(result.warnings),
+        }
+        if result.expected_shortfall is not None:
+            found = result.expected_shortfall
+            payload["expectedShortfallTest"] = {
+                "conditional": found.conditional,
+                "unconditional": found.unconditional,
+                "realisedOverForecast": found.realised_ratio,
+                "breaches": found.breaches,
+                "conditionalPValue": found.conditional_p_value,
+                "unconditionalPValue": found.unconditional_p_value,
+                "replications": found.replications,
+                "direction": found.direction,
+            }
+        payload["note"] = (
+            "Forecasts are POSITIVE losses, the same sign convention every risk "
+            "tool here returns, and returns are signed — so a breach is "
+            "`return < -forecast`. A forecast series of negative numbers is "
+            "refused rather than scored.\n\n"
+            "The two coverage tests fail for different reasons and need different "
+            "fixes. Unconditional coverage is about the NUMBER of breaches and a "
+            "rejection means the model is scaled wrong. Independence is about "
+            "whether they CLUSTER: a constant-volatility model can produce exactly "
+            "the right number of breaches over a year and put them all in one "
+            "fortnight, which a count cannot see and which no rescaling fixes — "
+            "that one needs a volatility process. Conditional coverage is the two "
+            "together and does not say which half failed, so read its parts.\n\n"
+            "The traffic-light zone is derived from the binomial, so it adapts to "
+            "the sample length: three breaches is green over 250 observations and "
+            "yellow over 125. plusFactor is the supervisory capital add-on and is "
+            "null outside the 250-observation, 99% setup it is published for, "
+            "because those values are tabulated rather than computed and "
+            "extrapolating them would invent a number.\n\n"
+            "Expected shortfall is not elicitable, so there is no breach-count "
+            "equivalent for it. The two Acerbi-Szekely statistics are zero under a "
+            "correct model and NEGATIVE when the tail is understated. They are not "
+            "on the same scale as the error they detect: test 1 reads about -0.245 "
+            "when the true volatility is double the forecast, because it is a ratio "
+            "of tail means. realisedOverForecast is the same information in units "
+            "that can be read directly. An OVERSTATED tail is nearly untestable — "
+            "a forecast twice too wide produces no breaches at all — so a small "
+            "positive reading is not evidence of caution.\n\n"
+            "`advisory` on a test means too few observations for the chi-square "
+            "limit it is scored against; the statistic is still reported and should "
+            "be read as descriptive."
+        )
+        return payload
+
     # -- registration -----------------------------------------------------
 
     def register(self, registry: ToolRegistry) -> ToolRegistry:
@@ -1257,6 +1414,112 @@ class RiskTools:
             },
             annotations=read_only,
         )(guard(self.drawdown_payload))
+
+        registry.register(
+            "validate_risk_model",
+            title="Score a value-at-risk forecast against what happened",
+            description=(
+                "Whether a risk model worked. Takes a series of realised returns and "
+                "the one-step-ahead forecasts that were made for them, and runs "
+                "Kupiec's unconditional coverage test on the breach count, "
+                "Christoffersen's test on whether the breaches cluster, the joint "
+                "conditional coverage test, and the supervisory traffic-light zone. "
+                "The clustering test is the one a count cannot replace: a "
+                "constant-volatility model can breach exactly the right number of "
+                "times over a year and put every breach in the same fortnight. Supply "
+                "expected-shortfall forecasts as well and it adds the Acerbi-Szekely "
+                "statistics, which are the only way to score a tail mean because "
+                "expected shortfall is not elicitable and has no breach-count "
+                "equivalent. Forecasts are positive losses, the sign convention every "
+                "other risk tool here returns."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "returns": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": MAX_FORECASTS,
+                        "items": {"type": "number", "exclusiveMinimum": -1, "maximum": 10},
+                        "description": (
+                            "Realised returns, signed, one per period in order. A loss "
+                            "is negative."
+                        ),
+                    },
+                    "valueAtRisk": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": MAX_FORECASTS,
+                        "items": {"type": "number", "exclusiveMinimum": 0, "maximum": 10},
+                        "description": (
+                            "The forecast made FOR each return, as a POSITIVE loss: "
+                            "0.023 is a forecast 2.3% loss. One per return and not "
+                            "offset — element i is the forecast that was made before "
+                            "return i was observed. Getting this alignment wrong is the "
+                            "easiest way to make a broken model look fine."
+                        ),
+                    },
+                    "expectedShortfall": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": MAX_FORECASTS,
+                        "items": {"type": "number", "exclusiveMinimum": 0, "maximum": 10},
+                        "description": (
+                            "Forecast tail means, positive losses, aligned the same "
+                            "way. Each must be at least its own value at risk, since a "
+                            "tail mean averages losses no smaller than the quantile. "
+                            "Omit to skip the expected-shortfall statistics."
+                        ),
+                    },
+                    "confidence": _CONFIDENCE,
+                    "replications": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": MAX_REPLICATIONS,
+                        "description": (
+                            "Simulate the expected-shortfall null this many times to "
+                            "attach p-values to those two statistics. Needs "
+                            "`expectedShortfall`. Zero, the default, reports the "
+                            "statistics without p-values. The coverage tests have "
+                            "closed-form p-values and are unaffected."
+                        ),
+                    },
+                    "distribution": {
+                        "type": "string",
+                        "enum": ["normal", "student-t"],
+                        "description": (
+                            "The predictive distribution the forecasts were built "
+                            "under, which is what the simulated null draws from. Only "
+                            "used when `replications` is above zero. Defaults to "
+                            "normal."
+                        ),
+                    },
+                    "degrees": {
+                        "type": "number",
+                        "exclusiveMinimum": 2,
+                        "maximum": 200,
+                        "description": (
+                            "Degrees of freedom for a student-t null, standardised to "
+                            "unit variance so it is comparable with the forecasts. "
+                            "Above two, because the variance to standardise by is "
+                            "infinite at or below it. Defaults to 5."
+                        ),
+                    },
+                    "seed": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2**31 - 1,
+                        "description": (
+                            "Seed for the simulation, so a reported p-value can be "
+                            "reproduced. Defaults to 0."
+                        ),
+                    },
+                },
+                "required": ["returns", "valueAtRisk", "confidence"],
+                "additionalProperties": False,
+            },
+            annotations=read_only,
+        )(guard(self.validation_payload))
 
         return registry
 
