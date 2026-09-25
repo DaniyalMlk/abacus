@@ -323,3 +323,100 @@ def test_both_tools_answer_a_launched_server() -> None:
             connected, "bond_carry_rolldown", horizon_call(horizon="2032-01-05")
         )
         assert "maturity" in error["message"]
+
+
+# -- conditional_volatility, and the workflow over the wire ------------------
+
+
+def garch_path(count: int = 1200, *, seed: int = 8) -> list[float]:
+    rng = random.Random(seed)
+    omega, alpha, beta = 2e-6, 0.08, 0.90
+    variance = omega / (1.0 - alpha - beta)
+    out: list[float] = []
+    for _ in range(count + 500):
+        value = math.sqrt(variance) * rng.gauss(0.0, 1.0)
+        out.append(value)
+        variance = omega + alpha * value * value + beta * variance
+    return out[500:]
+
+
+def regime_path(count: int, seed: int) -> list[float]:
+    rng = random.Random(seed)
+    out: list[float] = []
+    turbulent = False
+    for _ in range(count):
+        turbulent = rng.random() < (0.90 if turbulent else 0.02)
+        out.append(rng.gauss(0.0, 0.030 if turbulent else 0.006))
+    return out
+
+
+def test_the_volatility_tool_is_listed(client: Client) -> None:
+    assert "conditional_volatility" in client.tool_names()
+
+
+def test_the_fit_answers_over_the_wire(client: Client) -> None:
+    payload = succeed(client, "conditional_volatility", {"returns": garch_path()})
+    assert payload["converged"] is True
+    assert 0.0 < payload["persistence"] < 1.0
+    assert len(payload["volatilityForecasts"]) == 1200
+
+
+def test_a_long_forecast_series_survives_serialisation(client: Client) -> None:
+    """Twelve hundred floats through JSON and back. A value the encoder could
+    not carry would fail here and nowhere else."""
+    payload = succeed(client, "conditional_volatility", {"returns": garch_path(1200)})
+    series = payload["volatilityForecasts"]
+    assert all(isinstance(value, float) and value > 0.0 for value in series)
+    assert all(math.isfinite(value) for value in series)
+
+
+def test_a_sample_too_short_is_a_recoverable_refusal(client: Client) -> None:
+    be_refused(client, "conditional_volatility", {"returns": garch_path(40)})
+
+
+def test_an_unknown_field_is_a_recoverable_refusal_here_too(client: Client) -> None:
+    be_refused(
+        client, "conditional_volatility", {"returns": garch_path(400), "decay": 0.94}
+    )
+
+
+def test_the_workflow_runs_end_to_end_over_the_wire(client: Client) -> None:
+    """Fit the process with one tool, score it with the other, and watch the
+    clustering verdict change — with no offsetting between them, which is the
+    property the first tool exists to guarantee.
+    """
+    # Seed 40 is representative rather than lucky: over the ten seeds 40-49
+    # the constant forecast is rejected on nine and the conditional one on a
+    # single seed. The statistical claim is asserted in aggregate in
+    # test_model_validation.py; this is one instance of it, carried over the
+    # wire, and it is the eight-in-ten case rather than the exception.
+    observed = regime_path(2000, seed=40)
+    quantile = -normal_ppf(TAIL)
+    level = math.sqrt(math.fsum(value * value for value in observed) / len(observed))
+
+    flat = succeed(
+        client,
+        "validate_risk_model",
+        {
+            "returns": observed,
+            "valueAtRisk": [quantile * level] * len(observed),
+            "confidence": CONFIDENCE,
+        },
+    )
+    fitted = succeed(client, "conditional_volatility", {"returns": observed})
+    conditional = succeed(
+        client,
+        "validate_risk_model",
+        {
+            "returns": observed,
+            "valueAtRisk": [quantile * v for v in fitted["volatilityForecasts"]],
+            "confidence": CONFIDENCE,
+        },
+    )
+
+    before = {t["name"]: t for t in flat["tests"]}["independence"]
+    after = {t["name"]: t for t in conditional["tests"]}["independence"]
+    assert before["rejectsAt5Percent"] is True
+    assert after["rejectsAt5Percent"] is False
+    assert after["pValue"] > before["pValue"]
+    assert conditional["breaches"] < flat["breaches"]

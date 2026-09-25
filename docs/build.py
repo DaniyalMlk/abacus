@@ -125,6 +125,7 @@ GROUPS: tuple[Group, ...] = (
             "risk_parity_weights",
             "portfolio_drawdown",
             "validate_risk_model",
+            "conditional_volatility",
         ),
     ),
     Group(

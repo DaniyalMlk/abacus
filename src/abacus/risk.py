@@ -94,6 +94,8 @@ from shortfall import (
 )
 from shortfall import validate as validate_risk_model
 from shortfall.parametric import is_monotone
+from shortfall.volatility import MIN_OBSERVATIONS as MIN_GARCH_OBSERVATIONS
+from shortfall.volatility import fit_garch
 
 from .analytics import guard
 from .handles import HandleError, HandleTooLarge, Minter
@@ -145,6 +147,11 @@ MAX_FORECASTS = 5_000
 #: tenths of a percentage point, and more replications buy a digit nobody
 #: should be reading.
 MAX_REPLICATIONS = 5_000
+
+#: Most one-step-ahead volatilities returned in a payload. The series is the
+#: large part of it — one float per period — and a caller wanting the
+#: parameters from a longer history can ask for them without it.
+MAX_FORECAST_SERIES = 5_000
 
 _METHODS = ("normal", "student-t", "cornish-fisher", "historical", "filtered-historical")
 
@@ -1028,6 +1035,90 @@ class RiskTools:
             ),
         }
 
+    def conditional_volatility_payload(self, args: dict[str, Any]) -> dict[str, Any]:
+        observed = [float(value) for value in args["returns"]]
+        if len(observed) < MIN_GARCH_OBSERVATIONS:
+            raise DomainError(
+                f"{len(observed)} observations, below the {MIN_GARCH_OBSERVATIONS} a "
+                "GARCH fit needs. Below that the likelihood is nearly flat along the "
+                "persistence direction and the optimiser reports whatever it started "
+                "near, which would look like a fit and not be one.",
+                field="returns",
+            )
+        horizon = int(args.get("horizon", 10))
+        try:
+            fitted = fit_garch(
+                observed,
+                variance_targeting=bool(args.get("varianceTargeting", False)),
+                strict=False,
+            )
+        except ValueError as bad:
+            raise DomainError(str(bad), field="returns") from bad
+
+        include = bool(args.get("includeForecasts", True))
+        if include and len(observed) > MAX_FORECAST_SERIES:
+            raise DomainError(
+                f"{len(observed)} observations would return that many forecasts, above "
+                f"the limit of {MAX_FORECAST_SERIES}. Pass includeForecasts false for "
+                "the parameters alone, or fit a shorter window.",
+                field="returns",
+            )
+
+        payload: dict[str, Any] = {
+            "observations": fitted.observations,
+            "omega": fitted.omega,
+            "alpha": fitted.alpha,
+            "beta": fitted.beta,
+            "persistence": fitted.persistence,
+            "halfLife": fitted.half_life,
+            "longRunVolatility": fitted.long_run_volatility,
+            "currentVolatility": fitted.volatilities[-1],
+            "nextVolatility": math.sqrt(fitted.next_variance(observed[-1])),
+            "logLikelihood": fitted.log_likelihood,
+            "iterations": fitted.iterations,
+            "converged": fitted.converged,
+            "varianceTargeted": fitted.variance_targeted,
+            "horizon": horizon,
+            "horizonVolatility": math.sqrt(
+                fitted.horizon_variance(horizon, last_return=observed[-1])
+            ),
+            "squareRootOfTimeRatio": fitted.scaling_against_square_root_of_time(
+                horizon, last_return=observed[-1]
+            ),
+        }
+        if include:
+            payload["volatilityForecasts"] = list(fitted.volatilities)
+        payload["note"] = (
+            "`volatilityForecasts` is one number per observation, ALREADY ALIGNED: "
+            "element i is the forecast made from returns strictly before return i. "
+            "Multiply it by the quantile of whatever distribution you are assuming "
+            "and pass it to validate_risk_model as `valueAtRisk` beside the same "
+            "`returns`, with no offsetting. That alignment is the easiest thing in "
+            "this workflow to get wrong, so it is done here rather than "
+            "documented.\n\n"
+            "`persistence` is alpha + beta and must be below one for a long-run "
+            "variance to exist. `halfLife` is how many periods half of a shock "
+            "survives; at a persistence of 0.99 that is 69 periods, so a market "
+            "disturbed today is still half disturbed three months later.\n\n"
+            "`squareRootOfTimeRatio` is the horizon volatility over what scaling "
+            "today's volatility by the square root of the horizon would give. It is "
+            "BELOW one after a shock and ABOVE one in a calm market, and it is not a "
+            "small correction: from four times the long-run variance at a "
+            "persistence of 0.975, a one-year horizon is 39% below the scaled "
+            "figure. The calm case is the expensive one, because understating risk "
+            "arrives while positions are going on rather than coming off.\n\n"
+            "Check `converged` before using the parameters. A false there means the "
+            "optimiser ran out of iterations and the numbers are the best point it "
+            "reached, not a fit; try varianceTargeting, which removes the "
+            "worst-determined parameter from the search.\n\n"
+            "This is a Gaussian GARCH. It removes most of the clustering from a "
+            "return series and does NOT make the tail thin: on a regime-switching "
+            "series its forecasts still breach a 99% level about 28 times in 2000 "
+            "observations against a nominal 20, which is roughly half the excess a "
+            "constant forecast leaves. Validate rather than assume."
+        )
+        return payload
+
     def validation_payload(self, args: dict[str, Any]) -> dict[str, Any]:
         observed = [float(value) for value in args["returns"]]
         forecasts = [float(value) for value in args["valueAtRisk"]]
@@ -1414,6 +1505,73 @@ class RiskTools:
             },
             annotations=read_only,
         )(guard(self.drawdown_payload))
+
+        registry.register(
+            "conditional_volatility",
+            title="Fit a volatility process and forecast from it",
+            description=(
+                "A GARCH(1,1) fitted by maximum likelihood over a return series, "
+                "which is what to reach for when validate_risk_model rejects on "
+                "independence: clustered breaches mean the model has no notion of "
+                "volatility changing, and no rescaling fixes that. Returns the "
+                "parameters, the persistence, the half-life of a shock, and a "
+                "one-step-ahead volatility for every period — already aligned, so it "
+                "goes straight to validate_risk_model as a forecast series without "
+                "the caller offsetting anything. Also reports the horizon volatility "
+                "against what square-root-of-time would give, which differs by tens "
+                "of percent over a year and in both directions."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "returns": {
+                        "type": "array",
+                        "minItems": MIN_GARCH_OBSERVATIONS,
+                        "maxItems": MAX_FORECASTS,
+                        "items": {"type": "number", "exclusiveMinimum": -1, "maximum": 10},
+                        "description": (
+                            "One return per period, in order, oldest first. At least "
+                            f"{MIN_GARCH_OBSERVATIONS}: below that the likelihood is "
+                            "nearly flat along the persistence direction and the fit "
+                            "reports whatever it started near."
+                        ),
+                    },
+                    "horizon": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 2_000,
+                        "description": (
+                            "Periods to aggregate the variance over, for the horizon "
+                            "figure and its comparison with square-root-of-time. "
+                            "Defaults to 10."
+                        ),
+                    },
+                    "varianceTargeting": {
+                        "type": "boolean",
+                        "description": (
+                            "Fix the long-run variance to the sample variance and "
+                            "estimate only the two dynamic parameters. More robust on "
+                            "a short sample, because omega is the product of the "
+                            "long-run level and one minus the persistence, and on a "
+                            "persistent series that second factor is small and badly "
+                            "determined. Defaults to false."
+                        ),
+                    },
+                    "includeForecasts": {
+                        "type": "boolean",
+                        "description": (
+                            "Return the per-period volatility series. Defaults to "
+                            "true. Set false for the parameters alone, which is what "
+                            "a long history needs since the series is one number per "
+                            "observation."
+                        ),
+                    },
+                },
+                "required": ["returns"],
+                "additionalProperties": False,
+            },
+            annotations=read_only,
+        )(guard(self.conditional_volatility_payload))
 
         registry.register(
             "validate_risk_model",
