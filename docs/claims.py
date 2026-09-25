@@ -169,4 +169,44 @@ CLAIMS: tuple[Claim, ...] = (
         module="tests/test_skill.py",
         test="test_no_single_tool_takes_more_than_its_share",
     ),
+    Claim(
+        figure="279.0",
+        about=(
+            "Holding-period return of a 3% 2031 bond over one year on the bundled "
+            "quote screen, in basis points. Quoted in the bond_carry_rolldown "
+            "description, which is asserted in the same test."
+        ),
+        module="tests/test_model_validation.py",
+        test="test_the_figure_the_description_quotes_is_the_one_it_computes",
+    ),
+    Claim(
+        figure="2.49",
+        about=(
+            "Roll-down inside that 279 basis points, per 100 of face. The "
+            "financing cost is the other 0.50, so nearly all of the return is "
+            "the curve failing to evolve to its forwards."
+        ),
+        module="tests/test_model_validation.py",
+        test="test_the_figure_the_description_quotes_is_the_one_it_computes",
+    ),
+    Claim(
+        figure="-0.245",
+        about=(
+            "The Acerbi-Szekely conditional statistic when the true volatility is "
+            "double the forecast. Quoted in validate_risk_model's note to warn "
+            "that the statistic is not on the scale of the error it detects."
+        ),
+        module="tests/test_model_validation.py",
+        test="test_the_note_gives_the_measured_scale_of_the_shortfall_statistic",
+    ),
+    Claim(
+        figure="10.00% of the time",
+        about=(
+            "How often a breach follows a breach under a regime-switching "
+            "volatility, against 1.84% after a calm day — the clustering a "
+            "breach count cannot see."
+        ),
+        module="tests/test_model_validation.py",
+        test="test_clustered_breaches_are_caught_by_independence_not_by_the_count",
+    ),
 )

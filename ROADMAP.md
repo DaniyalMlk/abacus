@@ -131,3 +131,38 @@ exercised end to end, and covered by tests that run.
 - [x] README rewritten around what a user has working in the first minute
 - [x] A validation table: every number the documentation claims, and where it is checked
 - [x] One page explaining what each library underneath does and when to use it directly
+
+## Phase 14 — Gaps the libraries had, found by exposing them
+
+Two analytics that the flagship had a clear use for and the libraries
+underneath could not provide. Both were built there and surfaced here.
+
+- [x] `validate_risk_model`: the server could compute a value at risk five ways
+      and could not say whether any of them worked
+- [x] Kupiec, Christoffersen, conditional coverage and the supervisory traffic
+      light, with the zone derived from the binomial so it adapts to the sample
+      length rather than only answering for 250 observations
+- [x] The Acerbi-Szekely statistics where expected-shortfall forecasts are
+      supplied, with a simulated null and a bound on the replications
+- [x] `bond_carry_rolldown`: `bond_analytics` prices a bond and `bond_curve_risk`
+      says what moves it; neither answered what a position earns if nothing
+      happens
+- [x] Both callable over stdio and HTTP with a good input and a bad one, the bad
+      one arriving as a result a model can repair
+- [x] The curve handle reused by the horizon tool, round-tripped through a
+      launched subprocess
+- [x] Documented on the site, named in the packaged skill, inside the tool budget
+
+The clustering test is the one worth having. A constant-volatility model can
+breach exactly the right number of times over a year and put every breach in the
+same fortnight; a count cannot see that and no rescaling fixes it. Driven end to
+end through the tool over a regime-switching process, a breach is followed by
+another 10.00% of the time against 1.84% after a calm day.
+
+The bond tool reports both market meanings of "carry" because the conventional
+one ranks positions backwards: a 9% bond shows +4.83 of income less financing
+against a zero-coupon bond's -2.00, and earns 27 basis points less over the year.
+
+Adding the tools broke the docs-site group table and the packaged-skill test
+until both named them, which is what those tests are for. The tool listing went
+from 115,162 characters to 128,716 against a budget of 140,000.

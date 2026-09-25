@@ -114,29 +114,33 @@ GROUPS: tuple[Group, ...] = (
     Group(
         "risk",
         "Portfolio risk",
-        "Covariance, tail risk, where the risk sits and what the path did. "
-        "Estimate once and reuse the estimate; the tools that read the return "
-        "path say so rather than guessing.",
+        "Covariance, tail risk, where the risk sits, what the path did, and "
+        "whether the forecast was any good once the period has passed. Estimate "
+        "once and reuse the estimate; the tools that read the return path say "
+        "so rather than guessing.",
         (
             "estimate_return_moments",
             "portfolio_tail_risk",
             "portfolio_risk_contributions",
             "risk_parity_weights",
             "portfolio_drawdown",
+            "validate_risk_model",
         ),
     ),
     Group(
         "curves",
         "Curves and bonds",
         "A discount curve from the instruments that trade, and the bond analytics "
-        "that hang off it. Every calibration reports whether it reprices what it "
-        "was built from.",
+        "that hang off it — pricing, risk, spreads, and what a position earns "
+        "over a holding period. Every calibration reports whether it reprices "
+        "what it was built from.",
         (
             "bootstrap_discount_curve",
             "discount_curve_rates",
             "bond_analytics",
             "bond_curve_risk",
             "bond_spreads",
+            "bond_carry_rolldown",
         ),
     ),
     Group(

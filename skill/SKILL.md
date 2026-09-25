@@ -95,12 +95,18 @@ handle, and the parametric tools run from it without resending the matrix.
 for weights that equalise it, `portfolio_drawdown` for the path statistics. The
 last of those, and the historical tail-risk methods, need the matrix rather than
 the handle, because a second-moment summary has thrown the path away.
+`validate_risk_model` scores a forecast series against the returns that
+followed — a breach count alone cannot see a model whose breaches all arrive in
+the same fortnight, and that failure is the one no rescaling fixes.
 
 **Discounting and bonds.** `bootstrap_discount_curve` from deposits, futures and
 par swaps; `discount_curve_rates` for factors, zero rates and forwards;
 `bond_analytics` for price, yield, duration and convexity; `bond_curve_risk` for
 key rate durations and the hedge; `bond_spreads` for Z-spread, I-spread and
-option-adjusted spread.
+option-adjusted spread; `bond_carry_rolldown` for what a position earns over a
+holding period. Carry there is identically the financing cost, so the whole of
+the expected excess return is roll-down — report the split rather than the
+total.
 
 **What a trade cost, or should cost.**
 `decompose_implementation_shortfall` after the fact,
