@@ -221,7 +221,11 @@ def test_the_note_gives_the_measured_scale_of_the_shortfall_statistic(
 @pytest.mark.parametrize(
     ("mutate", "field", "fragment"),
     [
-        (lambda a: a.__setitem__("valueAtRisk", a["valueAtRisk"][:-1]), "valueAtRisk", "one-step-ahead"),
+        (
+            lambda a: a.__setitem__("valueAtRisk", a["valueAtRisk"][:-1]),
+            "valueAtRisk",
+            "one-step-ahead",
+        ),
         (lambda a: a.__setitem__("valueAtRisk", [-0.02] * 250), "valueAtRisk", "positive losses"),
         (lambda a: a.__setitem__("replications", 100), "replications", "expectedShortfall"),
     ],
