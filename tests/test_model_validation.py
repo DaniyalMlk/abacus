@@ -420,3 +420,193 @@ def test_both_tools_are_read_only_and_idempotent(registry: ToolRegistry) -> None
         annotations = tool(registry, name).annotations
         assert annotations["readOnlyHint"] is True
         assert annotations["idempotentHint"] is True
+
+
+# -- conditional_volatility, and the two composing ---------------------------
+
+
+def garch_path(count: int = 1500, *, seed: int = 8) -> list[float]:
+    """A simulated GARCH(1,1), burnt in so the start is not the seed."""
+    rng = random.Random(seed)
+    omega, alpha, beta = 2e-6, 0.08, 0.90
+    variance = omega / (1.0 - alpha - beta)
+    out: list[float] = []
+    for _ in range(count + 500):
+        value = math.sqrt(variance) * rng.gauss(0.0, 1.0)
+        out.append(value)
+        variance = omega + alpha * value * value + beta * variance
+    return out[500:]
+
+
+def regime_path(count: int, seed: int) -> list[float]:
+    rng = random.Random(seed)
+    out: list[float] = []
+    turbulent = False
+    for _ in range(count):
+        turbulent = rng.random() < (0.90 if turbulent else 0.02)
+        out.append(rng.gauss(0.0, 0.030 if turbulent else 0.006))
+    return out
+
+
+def test_the_fit_recovers_what_it_should(registry: ToolRegistry) -> None:
+    payload = call(registry, "conditional_volatility", {"returns": garch_path(3000)})
+    assert payload["converged"] is True
+    assert payload["alpha"] == pytest.approx(0.08, abs=0.04)
+    assert payload["beta"] == pytest.approx(0.90, abs=0.05)
+    assert 0.0 < payload["persistence"] < 1.0
+    assert payload["halfLife"] > 0.0
+
+
+def test_the_forecast_series_is_one_per_observation(registry: ToolRegistry) -> None:
+    data = garch_path(800)
+    payload = call(registry, "conditional_volatility", {"returns": data})
+    assert len(payload["volatilityForecasts"]) == len(data)
+    assert all(value > 0.0 for value in payload["volatilityForecasts"])
+    assert payload["currentVolatility"] == pytest.approx(payload["volatilityForecasts"][-1])
+
+
+def test_the_forecasts_can_be_withheld_for_a_long_history(registry: ToolRegistry) -> None:
+    payload = call(
+        registry,
+        "conditional_volatility",
+        {"returns": garch_path(800), "includeForecasts": False},
+    )
+    assert "volatilityForecasts" not in payload
+    assert payload["persistence"] > 0.0
+
+
+def test_the_horizon_ratio_follows_where_today_sits_against_the_long_run(
+    registry: ToolRegistry,
+) -> None:
+    """The invariant, rather than a sign on one contrived sample.
+
+    Appending quiet returns to force a calm ending does not reliably put the
+    ratio above one, because it refits the model and drags the long-run level
+    down with it — the first draft of this test assumed otherwise and got
+    0.9938. What is actually guaranteed is the *relationship*: the ratio is
+    below one exactly when the next-period forecast is above the long-run
+    level, whatever the fit turns out to be.
+    """
+    data = garch_path(1200, seed=3)
+    for series, horizon in (
+        (data, 250),
+        ([*data, *([data[-1] * 0.02] * 40)], 250),
+        ([*data, *([abs(data[-1]) * 8.0] * 3)], 250),
+        (data, 10),
+    ):
+        payload = call(
+            registry, "conditional_volatility", {"returns": series, "horizon": horizon}
+        )
+        above_long_run = payload["nextVolatility"] > payload["longRunVolatility"]
+        below_one = payload["squareRootOfTimeRatio"] < 1.0
+        assert above_long_run == below_one, payload["squareRootOfTimeRatio"]
+
+
+def test_a_shock_lowers_the_ratio_against_square_root_of_time(
+    registry: ToolRegistry,
+) -> None:
+    """Mean reversion has more to pull down from, so the scaled figure
+    overstates the horizon by more."""
+    data = garch_path(1200, seed=3)
+    calm = call(
+        registry,
+        "conditional_volatility",
+        {"returns": [*data, *([data[-1] * 0.02] * 40)], "horizon": 250},
+    )
+    shocked = call(
+        registry,
+        "conditional_volatility",
+        {"returns": [*data, *([abs(data[-1]) * 8.0] * 3)], "horizon": 250},
+    )
+    assert shocked["squareRootOfTimeRatio"] < calm["squareRootOfTimeRatio"]
+    assert shocked["squareRootOfTimeRatio"] < 1.0
+
+
+def test_variance_targeting_is_reported_as_used(registry: ToolRegistry) -> None:
+    payload = call(
+        registry,
+        "conditional_volatility",
+        {"returns": garch_path(800), "varianceTargeting": True},
+    )
+    assert payload["varianceTargeted"] is True
+    assert payload["converged"] is True
+
+
+def test_a_sample_too_short_to_fit_is_refused_with_the_reason(
+    registry: ToolRegistry,
+) -> None:
+    with pytest.raises(DomainError, match="nearly flat"):
+        call(registry, "conditional_volatility", {"returns": garch_path(40)})
+
+
+def test_a_series_with_no_variance_is_refused(registry: ToolRegistry) -> None:
+    with pytest.raises(DomainError, match="no variance at all"):
+        call(registry, "conditional_volatility", {"returns": [0.001] * 300})
+
+
+def test_the_volatility_payload_is_json_serialisable(registry: ToolRegistry) -> None:
+    payload = call(registry, "conditional_volatility", {"returns": garch_path(400)})
+    json.dumps(payload, allow_nan=False)
+
+
+def test_the_two_tools_compose_into_a_workflow(registry: ToolRegistry) -> None:
+    """The reason this tool exists, measured over ten independent samples.
+
+    A constant forecast on a regime-switching series has its breaches rejected
+    as clustered nine times in ten. The forecasts this tool produces, handed
+    straight to the validator with no offsetting, are rejected once.
+
+    The breach count improves from about 51 to about 27 against a nominal 20 —
+    halved rather than fixed, because a Gaussian GARCH still understates the
+    tail of a series whose standardised residuals are fat. The note says so,
+    and this is where that claim is held to account.
+    """
+    quantile = -normal_ppf(TAIL)
+    samples = 10
+    constant_rejections = garch_rejections = 0
+    constant_breaches = garch_breaches = 0
+    for seed in range(40, 40 + samples):
+        observed = regime_path(2000, seed)
+        fitted = call(registry, "conditional_volatility", {"returns": observed})
+        level = math.sqrt(math.fsum(v * v for v in observed) / len(observed))
+        flat = call(
+            registry,
+            "validate_risk_model",
+            {
+                "returns": observed,
+                "valueAtRisk": [quantile * level] * len(observed),
+                "confidence": CONFIDENCE,
+            },
+        )
+        conditional = call(
+            registry,
+            "validate_risk_model",
+            {
+                "returns": observed,
+                # No offsetting: the series comes out of one tool aligned for
+                # the other, which is the whole point.
+                "valueAtRisk": [quantile * v for v in fitted["volatilityForecasts"]],
+                "confidence": CONFIDENCE,
+            },
+        )
+        by_name = {t["name"]: t for t in flat["tests"]}
+        constant_rejections += by_name["independence"]["rejectsAt5Percent"]
+        constant_breaches += flat["breaches"]
+        by_name = {t["name"]: t for t in conditional["tests"]}
+        garch_rejections += by_name["independence"]["rejectsAt5Percent"]
+        garch_breaches += conditional["breaches"]
+
+    assert constant_rejections >= 8
+    assert garch_rejections <= 3
+    assert constant_breaches / samples > 45
+    # The tool's note tells a caller to expect about 28 times in 2000
+    # observations. This is where that figure is held to account.
+    assert 22 < garch_breaches / samples < 33
+
+
+def test_the_note_refuses_the_flattering_summary(registry: ToolRegistry) -> None:
+    """It would be easy to say this fixes the model. It halves the excess."""
+    payload = call(registry, "conditional_volatility", {"returns": garch_path(400)})
+    assert "does NOT make the tail thin" in payload["note"]
+    assert "28 times in 2000" in payload["note"]
+    assert "ALREADY ALIGNED" in payload["note"]

@@ -209,4 +209,15 @@ CLAIMS: tuple[Claim, ...] = (
         module="tests/test_model_validation.py",
         test="test_clustered_breaches_are_caught_by_independence_not_by_the_count",
     ),
+    Claim(
+        figure="28 times in 2000",
+        about=(
+            "How often a Gaussian GARCH's forecasts still breach a 99% level on a "
+            "regime-switching series, against a nominal 20. Quoted in "
+            "conditional_volatility's note to refuse the claim that the model "
+            "fixes the problem rather than halving it."
+        ),
+        module="tests/test_model_validation.py",
+        test="test_the_two_tools_compose_into_a_workflow",
+    ),
 )

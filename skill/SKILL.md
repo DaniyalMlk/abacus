@@ -97,7 +97,11 @@ last of those, and the historical tail-risk methods, need the matrix rather than
 the handle, because a second-moment summary has thrown the path away.
 `validate_risk_model` scores a forecast series against the returns that
 followed — a breach count alone cannot see a model whose breaches all arrive in
-the same fortnight, and that failure is the one no rescaling fixes.
+the same fortnight, and that failure is the one no rescaling fixes. When it
+does reject on independence, `conditional_volatility` is the answer: it fits a
+GARCH(1,1) and returns a one-step-ahead forecast per period, aligned so it goes
+straight back into the validator with nothing offset. The two compose into the
+only workflow on this surface that checks its own work.
 
 **Discounting and bonds.** `bootstrap_discount_curve` from deposits, futures and
 par swaps; `discount_curve_rates` for factors, zero rates and forwards;

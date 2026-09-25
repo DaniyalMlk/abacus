@@ -166,3 +166,36 @@ against a zero-coupon bond's -2.00, and earns 27 basis points less over the year
 Adding the tools broke the docs-site group table and the packaged-skill test
 until both named them, which is what those tests are for. The tool listing went
 from 115,162 characters to 128,716 against a budget of 140,000.
+
+## Phase 15 — The validator's input, produced here
+
+`validate_risk_model` scored a forecast series and made the caller bring one,
+which left it the single tool on this surface presupposing work done somewhere
+else. A model holding returns and nothing else could not use it.
+
+- [x] `conditional_volatility`: a GARCH(1,1) fitted by maximum likelihood, with
+      the persistence, the half-life of a shock, and the horizon volatility
+      against what square-root-of-time would give
+- [x] A one-step-ahead forecast per period, already aligned, so it goes to the
+      validator with nothing offset by the caller
+- [x] The forecast series capped, and withholdable, since it is one number per
+      observation and the large part of the payload
+- [x] Convergence reported honestly rather than a best-effort point returned as
+      though it were a fit
+- [x] The two composing, over the wire, with the clustering verdict changing
+
+Over ten independent regime-switching samples driven through both tools, a
+constant forecast has its breaches rejected as clustered nine times and the
+fitted forecast once. The breach count goes from about 51 to about 27 against a
+nominal 20.
+
+Halved rather than fixed. A Gaussian GARCH still understates the tail of a
+series whose standardised residuals are fat, and the note says so rather than
+claiming the model solves the problem — a tool whose description oversells it
+is worse than one that does less.
+
+Alignment is the thing this makes impossible rather than documents. A forecast
+series offset by one period against its returns scores a different model
+entirely and looks completely normal doing it.
+
+The tool listing went from 128,716 to 130,795 characters against 140,000.

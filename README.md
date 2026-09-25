@@ -149,6 +149,7 @@ It exits non-zero on a failure, so it works as a gate rather than a report.
 | `risk_parity_weights` | Weights that equalise risk contributions, with the convergence evidence |
 | `portfolio_drawdown` | Deepest drawdown, time underwater, ulcer index, Calmar and Sortino |
 | `validate_risk_model` | Whether a value-at-risk forecast worked: coverage, clustering, traffic light |
+| `conditional_volatility` | A GARCH(1,1) fit, and the forecast series the validator scores |
 | `bootstrap_discount_curve` | A curve from deposits, futures and par swaps, with a reusable handle |
 | `discount_curve_rates` | Discount factors, zero rates and forwards at whatever dates you ask for |
 | `bond_analytics` | Price, yield, duration and convexity, from a yield and from a curve |
