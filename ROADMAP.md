@@ -199,3 +199,47 @@ series offset by one period against its returns scores a different model
 entirely and looks completely normal doing it.
 
 The tool listing went from 128,716 to 130,795 characters against 140,000.
+
+## Phase 16 — The innovation tail, and a field with no incumbent
+
+Two gaps found by using the surface rather than by reading it.
+
+- [x] `conditional_volatility` estimates the innovation tail instead of assuming
+      a normal one, testing for it by likelihood ratio rather than assuming
+      either answer
+- [x] The quantile multiplier returned, so the standardised quantile is not
+      reconstructed by hand
+- [x] Conditional value at risk and expected shortfall in the same payload
+- [x] The note's claim about a Gaussian fit replaced by what the numbers now are
+- [x] `model_confidence_set`, for a set of candidates with no benchmark among them
+- [x] Both driven over the wire with a good input and a bad one
+- [x] The listing still inside its budget, with the figure to prove it
+
+The multiplier is the part that matters most and looks least interesting. The
+standardised Student-t quantile is the raw one times `sqrt((v-2)/v)`, and the raw
+one is 41% larger at four degrees of freedom. A caller who reached for the raw
+quantile widened every forecast and undershot the breach count, which reads as
+conservatism rather than as an error — so the number is computed here instead of
+being described. It is backed out of the fitted risk rather than recomputed, so
+the two cannot drift, and the mean is removed: multiplying a whole forecast
+series by a number with a drift folded into it scales that drift by each period's
+volatility.
+
+Measured on regime-switching series: the 99% breach count over 2000 observations
+falls from 28.2 under normal innovations to 22.45 against a nominal 20, about 70%
+of what the variance model left behind. Not all of it, and the note says why. On
+a series that never had a fat tail the two agree to within half a breach in
+twenty, which is what stops this from being a forecast widened indiscriminately.
+
+The confidence set answers a question the surface could not ask. Nominating the
+sample-best as a benchmark and calling `superior_predictive_ability` chooses the
+benchmark with the data the test runs on. Its answer is uncomfortable and the
+note leads with it: on the thirty-rule sweep with a genuine drift, 29 of 30 rules
+survive at 10% and the surviving set spans 9.3% of annualised mean return.
+
+Two things about it read backwards without being told, so the note says both. The
+size of the set is the result rather than a shortcoming of it, and a smaller alpha
+gives a larger set.
+
+The tool listing went from 131,635 to 134,053 characters against 140,000. That is
+the last tool that fits without raising the budget deliberately.

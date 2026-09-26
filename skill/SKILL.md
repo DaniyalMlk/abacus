@@ -122,7 +122,10 @@ selected out of several attempts — which is nearly always;
 `effective_trial_count` to see how many independent bets those attempts really
 were; `minimum_track_record_length` for how long a record would have to be;
 `backtest_overfitting_probability` for whether selection carries information at
-all; `superior_predictive_ability` for whether anything beats the benchmark.
+all; `superior_predictive_ability` for whether anything beats the benchmark;
+`model_confidence_set` when there is no benchmark to name and the question is
+which of a field cannot be told apart from the best. That last one usually keeps
+more of the field than anyone expects, and the size of the set is the answer.
 
 ## Reading the results
 

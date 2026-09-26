@@ -15,7 +15,7 @@ import random
 from typing import Any
 
 import pytest
-from shortfall.distributions import normal_pdf, normal_ppf
+from shortfall.distributions import normal_pdf, normal_ppf, student_t_ppf
 
 from abacus.analytics import default_registry
 from abacus.tools import DomainError, Tool, ToolRegistry
@@ -560,6 +560,11 @@ def test_the_two_tools_compose_into_a_workflow(registry: ToolRegistry) -> None:
     halved rather than fixed, because a Gaussian GARCH still understates the
     tail of a series whose standardised residuals are fat. The note says so,
     and this is where that claim is held to account.
+
+    Normal innovations are asked for explicitly. The default now tests for a fat
+    tail and would fit one on this data, which is the subject of the test below —
+    keeping this one pinned to the Gaussian case is what makes the pair a
+    comparison rather than two runs of the same thing.
     """
     quantile = -normal_ppf(TAIL)
     samples = 10
@@ -567,7 +572,11 @@ def test_the_two_tools_compose_into_a_workflow(registry: ToolRegistry) -> None:
     constant_breaches = garch_breaches = 0
     for seed in range(40, 40 + samples):
         observed = regime_path(2000, seed)
-        fitted = call(registry, "conditional_volatility", {"returns": observed})
+        fitted = call(
+            registry,
+            "conditional_volatility",
+            {"returns": observed, "innovation": "normal"},
+        )
         level = math.sqrt(math.fsum(v * v for v in observed) / len(observed))
         flat = call(
             registry,
@@ -599,14 +608,233 @@ def test_the_two_tools_compose_into_a_workflow(registry: ToolRegistry) -> None:
     assert constant_rejections >= 8
     assert garch_rejections <= 3
     assert constant_breaches / samples > 45
-    # The tool's note tells a caller to expect about 28 times in 2000
-    # observations. This is where that figure is held to account.
+    # The tool's note quotes 28.2 breaches in 2000 observations under normal
+    # innovations. This is where that figure is held to account; the tests in
+    # shortfall hold the 22.45 that estimating the tail brings it to.
     assert 22 < garch_breaches / samples < 33
 
 
 def test_the_note_refuses_the_flattering_summary(registry: ToolRegistry) -> None:
-    """It would be easy to say this fixes the model. It halves the excess."""
+    """It would be easy to say estimating the tail fixes the model. It does not.
+
+    The note now quotes both ends of the improvement — 28.2 breaches to 22.45
+    against a nominal 20 — rather than the first alone, and says why the rest is
+    still there. A series whose volatility jumps between regimes does not have
+    identically distributed standardised residuals, so one tail index for the
+    whole sample is closer than the normal's and not correct.
+    """
     payload = call(registry, "conditional_volatility", {"returns": garch_path(400)})
-    assert "does NOT make the tail thin" in payload["note"]
-    assert "28 times in 2000" in payload["note"]
-    assert "ALREADY ALIGNED" in payload["note"]
+    note = payload["note"]
+    assert "ALREADY ALIGNED" in note
+    assert "28.2 to 22.45" in note
+    assert "nominal 20" in note
+    assert "still an approximation" in note
+    # And the footgun the multiplier exists to remove is named in the note that
+    # tells the caller to use it.
+    assert "STANDARDISED quantile" in note
+    assert "quantileMultiplier" in note
+
+
+# -- the innovation distribution ---------------------------------------------
+
+
+def student_t_garch_path(
+    count: int = 1500, *, degrees: float = 4.5, seed: int = 8
+) -> list[float]:
+    """The same variance process as :func:`garch_path` with a fat-tailed draw.
+
+    The innovation is standardised to unit variance, so the two generators differ
+    in the shape of the draw and in nothing else. Without that the fit would see a
+    different variance level as well and the comparison would not isolate the tail.
+    """
+    rng = random.Random(seed)
+    omega, alpha, beta = 2e-6, 0.08, 0.90
+    scale = math.sqrt(degrees / (degrees - 2.0))
+    variance = omega / (1.0 - alpha - beta)
+    out: list[float] = []
+    for _ in range(count + 500):
+        chi_square = 2.0 * rng.gammavariate(degrees / 2.0, 1.0)
+        innovation = rng.gauss(0.0, 1.0) / math.sqrt(chi_square / degrees) / scale
+        value = math.sqrt(variance) * innovation
+        out.append(value)
+        variance = omega + alpha * value * value + beta * variance
+    return out[500:]
+
+
+def test_the_fat_tail_is_found_when_it_is_there(registry: ToolRegistry) -> None:
+    payload = call(
+        registry, "conditional_volatility", {"returns": student_t_garch_path(1500)}
+    )
+    assert payload["innovation"] == "student-t"
+    assert payload["fatTail"]["fat"] is True
+    assert payload["fatTail"]["pValue"] < 0.01
+    assert 2.0 < payload["degreesOfFreedom"] < 12.0
+    assert payload["expectedShortfall"] > payload["valueAtRisk"] > 0.0
+
+
+def test_the_implied_kurtosis_is_null_exactly_when_there_is_no_fourth_moment(
+    registry: ToolRegistry,
+) -> None:
+    """`6 / (v - 4)` is infinite at four degrees of freedom and negative below.
+
+    Both are wrong to emit. The infinity is not JSON — `json.dumps` writes a bare
+    `Infinity` token and a strict parser rejects the whole message — and the
+    negative number is worse than useless, since a caller comparing it against a
+    sample kurtosis would conclude the innovations were thin-tailed. The field is
+    null in both cases, which is why the tool reports the degrees of freedom
+    beside it.
+
+    A tail of eight degrees of freedom is fat and has a fourth moment, so the
+    number is there; a tail near three does not, so it is not.
+    """
+    moderate = call(
+        registry,
+        "conditional_volatility",
+        {"returns": student_t_garch_path(2000, degrees=8.0, seed=21)},
+    )
+    assert moderate["degreesOfFreedom"] > 4.0
+    assert moderate["impliedExcessKurtosis"] == pytest.approx(
+        6.0 / (moderate["degreesOfFreedom"] - 4.0)
+    )
+
+    extreme = call(
+        registry,
+        "conditional_volatility",
+        {"returns": student_t_garch_path(2000, degrees=2.8, seed=22)},
+    )
+    assert extreme["degreesOfFreedom"] < 4.0
+    assert extreme["impliedExcessKurtosis"] is None
+    json.dumps(extreme, allow_nan=False)
+
+
+def test_a_thin_tail_is_reported_as_unidentified_rather_than_as_a_number(
+    registry: ToolRegistry,
+) -> None:
+    """Above 200 degrees of freedom the likelihood is flat, so the number is noise.
+
+    Returning it anyway is what lets a caller write "our fitted tail index is
+    640" about a series that is simply Gaussian. The field is null instead.
+    """
+    payload = call(registry, "conditional_volatility", {"returns": garch_path(1500)})
+    assert payload["innovation"] == "normal"
+    assert payload["fatTail"]["fat"] is False
+    assert payload["degreesOfFreedom"] is None
+    assert payload["impliedExcessKurtosis"] is None
+
+
+def test_the_quantile_multiplier_is_the_standardised_quantile(
+    registry: ToolRegistry,
+) -> None:
+    """The footgun this field exists to remove, checked against both closed forms.
+
+    Under Student-t innovations the multiplier is the raw t quantile scaled by
+    ``sqrt((v - 2) / v)``, and that scaling is not a rounding correction: the raw
+    quantile is 41% larger at four degrees of freedom, and 73% larger at three.
+    A caller who reaches for it widens every forecast and undershoots the breach
+    count, which looks conservative rather than wrong — the reason this is
+    computed here instead of being described.
+
+    The ratio is ``sqrt(v / (v - 2))`` and depends on nothing else, so it is
+    asserted at the exact degrees of freedom rather than at whatever the fit
+    happened to return.
+    """
+    assert math.sqrt(4.0 / 2.0) == pytest.approx(1.414, abs=0.001)
+    assert math.sqrt(3.0 / 1.0) == pytest.approx(1.732, abs=0.001)
+    fat = call(
+        registry, "conditional_volatility", {"returns": student_t_garch_path(1200)}
+    )
+    degrees = fat["degreesOfFreedom"]
+    expected = -student_t_ppf(0.01, degrees) * math.sqrt((degrees - 2.0) / degrees)
+    assert fat["quantileMultiplier"] == pytest.approx(expected)
+    assert fat["quantileMultiplier"] > -normal_ppf(0.01)
+    # And the raw quantile really is the larger number, by exactly the factor
+    # above at the degrees of freedom the fit found.
+    raw = -student_t_ppf(0.01, degrees)
+    assert raw / fat["quantileMultiplier"] == pytest.approx(
+        math.sqrt(degrees / (degrees - 2.0))
+    )
+
+    thin = call(
+        registry,
+        "conditional_volatility",
+        {"returns": garch_path(1200), "innovation": "normal"},
+    )
+    assert thin["quantileMultiplier"] == pytest.approx(-normal_ppf(0.01))
+
+
+def test_the_multiplier_carries_no_mean(registry: ToolRegistry) -> None:
+    """A drift shifts the value at risk and must not shift the multiplier.
+
+    The multiplier is a quantile of the innovation, so it belongs to the shape
+    and not to the level. Folding the mean in would give a number that multiplied
+    through a forecast series scales a constant drift by each period's volatility
+    — wrong in a way that is invisible on a series whose mean is near zero, which
+    is every series anybody tests this on.
+    """
+    base = garch_path(800)
+    drifted = [value + 0.002 for value in base]
+    plain = call(
+        registry, "conditional_volatility", {"returns": base, "innovation": "normal"}
+    )
+    shifted = call(
+        registry, "conditional_volatility", {"returns": drifted, "innovation": "normal"}
+    )
+    assert shifted["quantileMultiplier"] == pytest.approx(plain["quantileMultiplier"])
+    assert shifted["valueAtRisk"] < plain["valueAtRisk"]
+
+
+def test_the_confidence_moves_both_figures_together(registry: ToolRegistry) -> None:
+    data = student_t_garch_path(1000)
+    deeper = call(
+        registry, "conditional_volatility", {"returns": data, "confidence": 0.995}
+    )
+    shallower = call(
+        registry, "conditional_volatility", {"returns": data, "confidence": 0.95}
+    )
+    assert deeper["valueAtRisk"] > shallower["valueAtRisk"]
+    assert deeper["expectedShortfall"] > shallower["expectedShortfall"]
+    assert deeper["quantileMultiplier"] > shallower["quantileMultiplier"]
+    assert deeper["confidence"] == 0.995
+
+
+def test_the_multiplier_closes_the_workflow_on_a_fat_tailed_series(
+    registry: ToolRegistry,
+) -> None:
+    """Fit, scale by what came back, score — and the breach count lands near 20.
+
+    The same composition as the Gaussian test above, with the tail estimated and
+    the multiplier used as handed over. Over ten regime-switching samples the
+    normal-innovation path breaches about 28 times per 2000 observations and this
+    one about 22, against a nominal 20. The point of the test is that a caller who
+    does what the note says gets the better number without computing a quantile.
+    """
+    samples = 10
+    fat_breaches = 0
+    thin_breaches = 0
+    for seed in range(40, 40 + samples):
+        observed = regime_path(2000, seed)
+        for innovation, total in (("auto", "fat"), ("normal", "thin")):
+            fitted = call(
+                registry,
+                "conditional_volatility",
+                {"returns": observed, "innovation": innovation},
+            )
+            multiplier = fitted["quantileMultiplier"]
+            scored = call(
+                registry,
+                "validate_risk_model",
+                {
+                    "returns": observed,
+                    "valueAtRisk": [
+                        multiplier * value for value in fitted["volatilityForecasts"]
+                    ],
+                    "confidence": CONFIDENCE,
+                },
+            )
+            if total == "fat":
+                fat_breaches += scored["breaches"]
+            else:
+                thin_breaches += scored["breaches"]
+    assert 18.0 < fat_breaches / samples < 26.0
+    assert 24.0 < thin_breaches / samples < 33.0
+    assert fat_breaches < thin_breaches

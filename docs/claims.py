@@ -210,14 +210,25 @@ CLAIMS: tuple[Claim, ...] = (
         test="test_clustered_breaches_are_caught_by_independence_not_by_the_count",
     ),
     Claim(
-        figure="28 times in 2000",
+        figure="28.2 to 22.45",
         about=(
-            "How often a Gaussian GARCH's forecasts still breach a 99% level on a "
-            "regime-switching series, against a nominal 20. Quoted in "
-            "conditional_volatility's note to refuse the claim that the model "
-            "fixes the problem rather than halving it."
+            "The 99% breach count over 2000 observations of a regime-switching "
+            "series, under normal innovations and under an estimated tail, against "
+            "a nominal 20. Quoted in conditional_volatility's note to say what "
+            "estimating the tail buys and what it leaves behind."
         ),
         module="tests/test_model_validation.py",
-        test="test_the_two_tools_compose_into_a_workflow",
+        test="test_the_note_refuses_the_flattering_summary",
+    ),
+    Claim(
+        figure="41% larger at four degrees of freedom",
+        about=(
+            "How much wider a forecast becomes if the raw Student-t quantile is "
+            "used where the standardised one belongs. The reason "
+            "conditional_volatility returns the multiplier rather than describing "
+            "how to build it."
+        ),
+        module="tests/test_model_validation.py",
+        test="test_the_quantile_multiplier_is_the_standardised_quantile",
     ),
 )

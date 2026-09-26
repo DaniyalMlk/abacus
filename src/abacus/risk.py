@@ -95,7 +95,7 @@ from shortfall import (
 from shortfall import validate as validate_risk_model
 from shortfall.parametric import is_monotone
 from shortfall.volatility import MIN_OBSERVATIONS as MIN_GARCH_OBSERVATIONS
-from shortfall.volatility import fit_garch
+from shortfall.volatility import Innovation, fat_tail_test, fit_garch
 
 from .analytics import guard
 from .handles import HandleError, HandleTooLarge, Minter
@@ -1046,14 +1046,44 @@ class RiskTools:
                 field="returns",
             )
         horizon = int(args.get("horizon", 10))
+        targeting = bool(args.get("varianceTargeting", False))
+        confidence = float(args.get("confidence", 0.99))
+        choice = str(args.get("innovation", "auto"))
+        verdict = None
         try:
+            if choice == "auto":
+                # Tested rather than assumed in either direction. Always fitting
+                # the heavier tail costs a thin-tailed series a slightly wider
+                # quantile for no reason the caller asked for; always assuming
+                # the normal is the error this parameter exists to remove.
+                verdict = fat_tail_test(observed, variance_targeting=targeting)
+                innovation = Innovation.STUDENT_T if verdict.fat else Innovation.NORMAL
+            else:
+                innovation = Innovation(choice)
             fitted = fit_garch(
                 observed,
-                variance_targeting=bool(args.get("varianceTargeting", False)),
+                variance_targeting=targeting,
                 strict=False,
+                innovation=innovation,
             )
         except ValueError as bad:
             raise DomainError(str(bad), field="returns") from bad
+        conditional = fitted.risk(confidence=confidence, last_return=observed[-1])
+        # The multiplier the forecast series is scaled by to become a value at
+        # risk. Handing it back is the point: under Student-t innovations it is
+        # the *standardised* quantile — the raw one times sqrt((v - 2) / v) — and
+        # a caller who reaches for the raw quantile widens every forecast by 41%
+        # at four degrees of freedom.
+        #
+        # Backed out of the fitted risk rather than recomputed, so the two cannot
+        # drift apart, and with the mean removed: `quantile` is
+        # `mean + sigma * z`, so `(mean - quantile) / sigma` is exactly `-z` and
+        # nothing else. Leaving the mean in would give a number that is not a
+        # quantile of anything, and multiplying a whole forecast series by it
+        # would scale a constant drift by each period's volatility.
+        next_volatility = math.sqrt(fitted.next_variance(observed[-1]))
+        multiplier = (fitted.mean - conditional.quantile) / next_volatility
+        kurtosis = fitted.implied_excess_kurtosis
 
         include = bool(args.get("includeForecasts", True))
         if include and len(observed) > MAX_FORECAST_SERIES:
@@ -1073,7 +1103,7 @@ class RiskTools:
             "halfLife": fitted.half_life,
             "longRunVolatility": fitted.long_run_volatility,
             "currentVolatility": fitted.volatilities[-1],
-            "nextVolatility": math.sqrt(fitted.next_variance(observed[-1])),
+            "nextVolatility": next_volatility,
             "logLikelihood": fitted.log_likelihood,
             "iterations": fitted.iterations,
             "converged": fitted.converged,
@@ -1085,7 +1115,33 @@ class RiskTools:
             "squareRootOfTimeRatio": fitted.scaling_against_square_root_of_time(
                 horizon, last_return=observed[-1]
             ),
+            "innovation": fitted.innovation.value,
+            # Withheld rather than reported when the likelihood could not pin it
+            # down. Above 200 the standardised-t density is within a percent of
+            # the normal everywhere that matters, so the number the optimiser
+            # stopped at is noise and "our fitted tail index is 640" is a claim
+            # about a series that is simply Gaussian.
+            "degreesOfFreedom": fitted.degrees_of_freedom if fitted.degrees_identified else None,
+            # None below four degrees of freedom, where 6 / (v - 4) is genuinely
+            # infinite. `json.dumps` writes bare Infinity for it, which is not
+            # JSON, and a strict parser rejects the whole message rather than the
+            # field.
+            "impliedExcessKurtosis": (
+                kurtosis if fitted.degrees_identified and math.isfinite(kurtosis) else None
+            ),
+            "confidence": confidence,
+            "valueAtRisk": conditional.value_at_risk,
+            "expectedShortfall": conditional.expected_shortfall,
+            "quantileMultiplier": multiplier,
         }
+        if verdict is not None:
+            payload["fatTail"] = {
+                "statistic": verdict.statistic,
+                "pValue": verdict.p_value,
+                "degreesOfFreedom": verdict.degrees_of_freedom if verdict.identified else None,
+                "identified": verdict.identified,
+                "fat": verdict.fat,
+            }
         if include:
             payload["volatilityForecasts"] = list(fitted.volatilities)
         payload["note"] = (
@@ -1111,11 +1167,29 @@ class RiskTools:
             "optimiser ran out of iterations and the numbers are the best point it "
             "reached, not a fit; try varianceTargeting, which removes the "
             "worst-determined parameter from the search.\n\n"
-            "This is a Gaussian GARCH. It removes most of the clustering from a "
-            "return series and does NOT make the tail thin: on a regime-switching "
-            "series its forecasts still breach a 99% level about 28 times in 2000 "
-            "observations against a nominal 20, which is roughly half the excess a "
-            "constant forecast leaves. Validate rather than assume."
+            "Scale `volatilityForecasts` by `quantileMultiplier`, not by a normal "
+            "quantile. Under Student-t innovations the right multiplier is the "
+            "STANDARDISED quantile — the raw t quantile times sqrt((v-2)/v) — and "
+            "using the raw one widens every forecast by 41% at four degrees of "
+            "freedom, which undershoots the breach count and looks conservative "
+            "rather than wrong. The multiplier is the innovation quantile alone "
+            "and carries no mean; subtract `mean` from the product if the drift "
+            "matters, which on a daily series it does not at any usual "
+            "confidence.\n\n"
+            "`innovation` defaults to testing for a fat tail by likelihood ratio "
+            "and using one only if the data shows one; `fatTail` carries that "
+            "verdict. Its p-value is conservative by about a factor of two, "
+            "because the null sits on the boundary of the parameter space — "
+            "measured over 200 Gaussian samples, a nominal 5% test rejected 5 "
+            "times. Read a rejection as meaning what it says and a near miss as "
+            "weaker evidence against a fat tail than it looks.\n\n"
+            "What estimating the tail buys, measured on regime-switching series: "
+            "the 99% breach count over 2000 observations falls from 28.2 to 22.45 "
+            "against a nominal 20, so about 70% of the excess a Gaussian GARCH "
+            "leaves. Not all of it — a single tail index for a series whose "
+            "volatility jumps between regimes is closer than the normal's and "
+            "still an approximation. On a series that never had a fat tail the two "
+            "agree to within half a breach in twenty. Validate rather than assume."
         )
         return payload
 
@@ -1519,7 +1593,10 @@ class RiskTools:
                 "goes straight to validate_risk_model as a forecast series without "
                 "the caller offsetting anything. Also reports the horizon volatility "
                 "against what square-root-of-time would give, which differs by tens "
-                "of percent over a year and in both directions."
+                "of percent over a year and in both directions. The innovation tail "
+                "is estimated rather than assumed normal, and the multiplier to turn "
+                "the forecast series into a value at risk comes back with it — the "
+                "standardised quantile, which is not the raw one."
             ),
             input_schema={
                 "type": "object",
@@ -1564,6 +1641,28 @@ class RiskTools:
                             "true. Set false for the parameters alone, which is what "
                             "a long history needs since the series is one number per "
                             "observation."
+                        ),
+                    },
+                    "innovation": {
+                        "type": "string",
+                        "enum": ["auto", "normal", "student-t"],
+                        "description": (
+                            "Shape assumed for the standardised residuals. 'auto' "
+                            "tests for a fat tail by likelihood ratio and fits one "
+                            "only if the data shows one; that verdict comes back in "
+                            "`fatTail`. Defaults to auto. The variance process says "
+                            "how the scale moves and says nothing about the shape "
+                            "drawn at that scale, which is why this is a separate "
+                            "choice."
+                        ),
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "exclusiveMinimum": 0.5,
+                        "exclusiveMaximum": 1,
+                        "description": (
+                            "Confidence for the conditional value at risk, expected "
+                            "shortfall and quantile multiplier. Defaults to 0.99."
                         ),
                     },
                 },

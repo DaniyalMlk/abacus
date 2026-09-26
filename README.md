@@ -348,6 +348,48 @@ real one. Skewness and kurtosis are refused when no distribution could have
 them: every distribution satisfies `kurtosis >= 1 + skewness^2`, so a skewness
 of -1.5 needs an excess kurtosis of at least 0.25.
 
+**Nothing here nominates a benchmark for you.** `superior_predictive_ability`
+needs one and `model_confidence_set` does not, which is the difference that
+decides which to reach for. Given a field of candidates with no incumbent among
+them, picking the sample-best as the benchmark and testing the rest against it
+chooses the benchmark with the same data the test runs on, so under the null it
+is the luckiest column present and every comparison is biased towards finding
+nothing. The confidence set asks instead which models cannot be told apart from
+the best, and returns them all.
+
+Its answer is usually larger than anyone expects. On thirty crossover rules over
+ten years of a market with a genuine drift in it — a sweep whose best rule clears
+the deflated Sharpe test — **29 of the 30 survive at the 10% level**, and the
+surviving set spans 9.3% of annualised mean return. The size of the set is the
+result, not a shortcoming of it. A smaller `alpha` gives a *larger* set, because
+this is a confidence region rather than a hypothesis test.
+
+**The volatility tool now estimates the tail, and hands back the multiplier.**
+`conditional_volatility` used to return a volatility and tell the caller to
+multiply it by "the quantile of whatever distribution you are assuming". For the
+distribution worth assuming that is a footgun: the standardised Student-t
+quantile is the raw one times `sqrt((v-2)/v)`, and the raw one is 41% larger at
+four degrees of freedom — so a caller who reaches for it widens every forecast
+and undershoots the breach count, which looks conservative rather than wrong.
+`quantileMultiplier` is now in the result, backed out of the fitted risk so the
+two cannot drift apart, with the mean removed so it is a quantile of the
+innovation and of nothing else.
+
+| 99% forecasts on regime-switching data | breaches per 2000 | nominal |
+| --- | --- | --- |
+| constant volatility | ~51 | 20 |
+| GARCH, normal innovations | 28.2 | 20 |
+| GARCH, estimated tail | 22.45 | 20 |
+
+About 70% of the excess a Gaussian fit leaves behind, and the note says what is
+still there rather than claiming the problem is solved: a series whose volatility
+jumps between regimes does not have identically distributed standardised
+residuals, so one tail index for the whole sample is closer than the normal's and
+still an approximation. The innovation is *tested for* rather than assumed —
+`fatTail` carries the likelihood ratio — because a series with thin innovations
+should not have its quantile widened for no reason anybody asked for. On such a
+series the two agree to within half a breach in twenty.
+
 ## The skill
 
 [`skill/SKILL.md`](skill/SKILL.md) is the overview the individual schemas cannot

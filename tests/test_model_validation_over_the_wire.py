@@ -420,3 +420,200 @@ def test_the_workflow_runs_end_to_end_over_the_wire(client: Client) -> None:
     assert after["rejectsAt5Percent"] is False
     assert after["pValue"] > before["pValue"]
     assert conditional["breaches"] < flat["breaches"]
+
+
+# -- the innovation tail, over the wire ---------------------------------------
+
+
+def student_t_path(count: int = 1200, *, degrees: float = 4.5, seed: int = 8) -> list[float]:
+    rng = random.Random(seed)
+    omega, alpha, beta = 2e-6, 0.08, 0.90
+    scale = math.sqrt(degrees / (degrees - 2.0))
+    variance = omega / (1.0 - alpha - beta)
+    out: list[float] = []
+    for _ in range(count + 500):
+        chi_square = 2.0 * rng.gammavariate(degrees / 2.0, 1.0)
+        innovation = rng.gauss(0.0, 1.0) / math.sqrt(chi_square / degrees) / scale
+        value = math.sqrt(variance) * innovation
+        out.append(value)
+        variance = omega + alpha * value * value + beta * variance
+    return out[500:]
+
+
+def test_the_fat_tail_verdict_survives_the_round_trip(client: Client) -> None:
+    payload = succeed(client, "conditional_volatility", {"returns": student_t_path()})
+    assert payload["innovation"] == "student-t"
+    assert payload["fatTail"]["fat"] is True
+    assert isinstance(payload["degreesOfFreedom"], float)
+    assert payload["quantileMultiplier"] > -normal_ppf(TAIL)
+
+
+def test_a_null_tail_index_crosses_the_wire_as_null(client: Client) -> None:
+    """JSON has a null and this is the field that needs one.
+
+    An unidentified estimate must not arrive as a number, and an infinite implied
+    kurtosis must not arrive at all — `json.dumps` writes a bare `Infinity` token
+    for it, which is not JSON, and a strict client rejects the whole message
+    rather than the field. Checked here rather than in process because the
+    in-process handler never serialises anything.
+    """
+    payload = succeed(client, "conditional_volatility", {"returns": garch_path(1200)})
+    assert payload["innovation"] == "normal"
+    assert payload["degreesOfFreedom"] is None
+    assert payload["impliedExcessKurtosis"] is None
+    assert "Infinity" not in json.dumps(payload)
+    assert "NaN" not in json.dumps(payload)
+
+
+def test_an_unknown_innovation_is_a_recoverable_refusal(client: Client) -> None:
+    error = be_refused(
+        client,
+        "conditional_volatility",
+        {"returns": garch_path(400), "innovation": "cauchy"},
+    )
+    assert "student-t" in error["message"] or "innovation" in error["message"]
+
+
+def test_a_confidence_outside_the_range_is_a_recoverable_refusal(client: Client) -> None:
+    be_refused(
+        client, "conditional_volatility", {"returns": garch_path(400), "confidence": 0.4}
+    )
+
+
+# -- the model confidence set, over the wire ---------------------------------
+
+
+def candidate_matrix(
+    periods: int = 600, *, winners: int = 2, losers: int = 6, seed: int = 4
+) -> list[list[float]]:
+    """A few models sharing an edge and several without one.
+
+    The winners share a common component rather than being independent draws with
+    the same mean, because that is what a parameter sweep produces and it is the
+    case the cross-sectional resampling exists to handle.
+    """
+    rng = random.Random(seed)
+    rows: list[list[float]] = []
+    for _ in range(periods):
+        shared = rng.gauss(0.0006, 0.01)
+        row = [shared + rng.gauss(0.0, 0.002) for _ in range(winners)]
+        row += [rng.gauss(-0.0004, 0.01) for _ in range(losers)]
+        rows.append(row)
+    return rows
+
+
+def test_the_confidence_set_tool_is_listed(client: Client) -> None:
+    assert "model_confidence_set" in client.tool_names()
+
+
+def test_the_confidence_set_answers_over_the_wire(client: Client) -> None:
+    payload = succeed(
+        client, "model_confidence_set", {"trials": candidate_matrix(), "bootstrap": 400}
+    )
+    models = len(payload["pValues"])
+    assert models == 8
+    assert payload["alpha"] == 0.10
+    assert payload["statistic"] == "max"
+    assert payload["best"] in payload["included"]
+    assert len(payload["eliminationOrder"]) == models - 1
+    assert sorted(payload["included"] + payload["excluded"]) == list(range(models))
+    assert all(0.0 <= value <= 1.0 for value in payload["pValues"])
+    # The set is ordered by mean return, which is what makes the loss-matrix
+    # mistake visible to a reader.
+    means = [payload["meanReturns"][index] for index in payload["included"]]
+    assert means == sorted(means, reverse=True)
+
+
+def test_the_p_values_carry_every_level_the_caller_might_want(client: Client) -> None:
+    """One call, any alpha. The note promises this, so it is checked."""
+    payload = succeed(
+        client,
+        "model_confidence_set",
+        {"trials": candidate_matrix(), "bootstrap": 400, "alpha": 0.5},
+    )
+    at_half = {index for index in payload["included"]}
+    from_pvalues = {
+        index for index, value in enumerate(payload["pValues"]) if value > 0.5
+    }
+    assert at_half == from_pvalues
+    # And the larger level gives the smaller set, which is backwards from a
+    # hypothesis test and the thing most likely to be misread.
+    wider = succeed(
+        client,
+        "model_confidence_set",
+        {"trials": candidate_matrix(), "bootstrap": 400, "alpha": 0.01},
+    )
+    assert len(wider["included"]) >= len(payload["included"])
+
+
+def test_the_range_statistic_crosses_the_wire(client: Client) -> None:
+    payload = succeed(
+        client,
+        "model_confidence_set",
+        {"trials": candidate_matrix(), "bootstrap": 400, "statistic": "range"},
+    )
+    assert payload["statistic"] == "range"
+    assert payload["best"] in payload["included"]
+
+
+def test_one_column_is_a_recoverable_refusal(client: Client) -> None:
+    error = be_refused(
+        client,
+        "model_confidence_set",
+        {"trials": [[row[0]] for row in candidate_matrix()]},
+    )
+    assert "says nothing" in error["message"]
+
+
+def test_a_duplicated_model_is_a_recoverable_refusal_under_the_range(
+    client: Client,
+) -> None:
+    """A library exception becomes a result a model can act on, not a traceback."""
+    rows = [[*row, row[1]] for row in candidate_matrix()]
+    error = be_refused(
+        client,
+        "model_confidence_set",
+        {"trials": rows, "statistic": "range", "bootstrap": 400},
+    )
+    assert "standard error" in error["message"]
+
+
+def test_an_unknown_field_on_the_confidence_set_is_refused(client: Client) -> None:
+    be_refused(
+        client,
+        "model_confidence_set",
+        {"trials": candidate_matrix(), "blockLength": 5.0},
+    )
+
+
+def test_the_set_narrows_a_field_the_validator_then_scores(client: Client) -> None:
+    """The two tools composing, which is the workflow the surface is for.
+
+    Rank a field of candidates, take what survives, and score the survivor's own
+    volatility forecast — so the ranking tool hands a column index to the fitting
+    tool and the fitting tool hands a forecast series to the validator, all over
+    the wire.
+    """
+    rows = candidate_matrix(periods=1200)
+    ranked = succeed(
+        client, "model_confidence_set", {"trials": rows, "bootstrap": 400}
+    )
+    survivor = ranked["included"][0]
+    series = [row[survivor] for row in rows]
+
+    fitted = succeed(client, "conditional_volatility", {"returns": series})
+    scored = succeed(
+        client,
+        "validate_risk_model",
+        {
+            "returns": series,
+            "valueAtRisk": [
+                fitted["quantileMultiplier"] * value
+                for value in fitted["volatilityForecasts"]
+            ],
+            "confidence": CONFIDENCE,
+        },
+    )
+    assert scored["observations"] == len(series)
+    assert scored["breaches"] >= 0
+    assert 0.0 <= scored["breachRate"] <= 1.0
