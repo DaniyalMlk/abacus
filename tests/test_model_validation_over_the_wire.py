@@ -617,3 +617,80 @@ def test_the_set_narrows_a_field_the_validator_then_scores(client: Client) -> No
     assert scored["observations"] == len(series)
     assert scored["breaches"] >= 0
     assert 0.0 <= scored["breachRate"] <= 1.0
+
+
+# -- the horizon simulation, over the wire -----------------------------------
+
+
+def test_the_horizon_simulation_survives_the_round_trip(client: Client) -> None:
+    payload = succeed(
+        client,
+        "conditional_volatility",
+        {"returns": garch_path(1200), "horizon": 10, "paths": 10_000},
+    )
+    simulated = payload["horizonRisk"]
+    assert simulated["paths"] == 10_000
+    assert simulated["expectedShortfall"] > simulated["valueAtRisk"] > 0.0
+    assert 0.0 < simulated["standardError"] < simulated["valueAtRisk"]
+    assert "Infinity" not in json.dumps(payload)
+
+
+def test_a_horizon_figure_is_absent_without_paths(client: Client) -> None:
+    payload = succeed(client, "conditional_volatility", {"returns": garch_path(400)})
+    assert "horizonRisk" not in payload
+
+
+def test_too_few_paths_is_a_recoverable_refusal(client: Client) -> None:
+    error = be_refused(
+        client, "conditional_volatility", {"returns": garch_path(400), "paths": 200}
+    )
+    assert "paths" in json.dumps(error)
+
+
+def test_a_bootstrap_on_a_short_history_is_a_recoverable_refusal(client: Client) -> None:
+    """And the refusal names the route that does work on that sample."""
+    error = be_refused(
+        client,
+        "conditional_volatility",
+        {"returns": garch_path(150), "paths": 2_000, "draw": "bootstrap"},
+    )
+    assert "parametric" in error["message"]
+    parametric = succeed(
+        client,
+        "conditional_volatility",
+        {"returns": garch_path(150), "paths": 2_000, "draw": "parametric"},
+    )
+    assert parametric["horizonRisk"]["draw"] == "parametric"
+
+
+def test_an_unknown_draw_is_a_recoverable_refusal(client: Client) -> None:
+    be_refused(
+        client,
+        "conditional_volatility",
+        {"returns": garch_path(400), "paths": 2_000, "draw": "antithetic"},
+    )
+
+
+def test_the_horizon_figure_beats_the_substitution_it_replaces(client: Client) -> None:
+    """The workflow argument, over the wire: ask for the figure, do not build it.
+
+    A caller who multiplies `horizonVolatility` by `quantileMultiplier` gets a
+    different number. How different, and in which direction, depends on the series:
+    measured in the library over five fat-tailed samples the quantile ratio ranged
+    from 0.87 to 1.11 with a mean of 0.97, against a mean of 1.08 under normal
+    innovations. So this asserts that the two are not the same and that both ratios
+    reach the caller — not a sign, which would be asserting one sample's luck.
+    """
+    payload = succeed(
+        client,
+        "conditional_volatility",
+        {"returns": student_t_path(1500), "horizon": 10, "paths": 20_000},
+    )
+    simulated = payload["horizonRisk"]
+    substituted = payload["quantileMultiplier"] * payload["horizonVolatility"]
+    assert simulated["valueAtRisk"] != pytest.approx(substituted, rel=0.01)
+    assert simulated["volatilityAgainstSquareRootOfTime"] > 0.0
+    assert simulated["quantileAgainstSquareRootOfTime"] > 0.0
+    assert simulated["volatilityAgainstSquareRootOfTime"] != pytest.approx(
+        simulated["quantileAgainstSquareRootOfTime"], rel=0.01
+    )

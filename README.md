@@ -381,6 +381,23 @@ innovation and of nothing else.
 | GARCH, normal innovations | 28.2 | 20 |
 | GARCH, estimated tail | 22.45 | 20 |
 
+**A horizon figure is simulated, not scaled.** The tool takes a `horizon` and has
+always reported the aggregate volatility over it. Turning that into a quantile is
+the step the library refuses one period out, because the sum of the horizon's
+innovations is not a member of the family they were drawn from — so `paths` now
+runs the recursion forward instead and returns `horizonRisk` with a Monte Carlo
+error beside it. The substitution it replaces is wrong by 2.5, 11.0, 8.2 and 0.6
+standard errors on four samples: real on average, not decisive on any one series,
+because how far a horizon quantile departs from a scaled one depends on where the
+fit sits relative to its long-run level.
+
+Both square-root-of-time ratios come back, on the volatility and on the quantile,
+because they are different quantities and can sit on opposite sides of one. A
+stochastic variance path makes the accumulated return leptokurtic and pushes the
+quantile above the scaled figure; aggregating fat innovations pulls the total
+towards normality and pushes it below. A caller handed only the first would read a
+horizon as conservative when it is not.
+
 About 70% of the excess a Gaussian fit leaves behind, and the note says what is
 still there rather than claiming the problem is solved: a series whose volatility
 jumps between regimes does not have identically distributed standardised

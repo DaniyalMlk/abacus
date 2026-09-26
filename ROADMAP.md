@@ -243,3 +243,37 @@ gives a larger set.
 
 The tool listing went from 131,635 to 134,053 characters against 140,000. That is
 the last tool that fits without raising the budget deliberately.
+
+## Phase 17 — A horizon figure the caller does not have to build
+
+`conditional_volatility` reported an aggregate horizon volatility and invited
+exactly the step this library refuses one period out: multiplying it by a
+quantile. There is no quantile to multiply by — the sum of the horizon's
+innovations is not a member of the family they were drawn from — and the error the
+substitution makes does not have a fixed sign.
+
+- [x] Optional horizon simulation, off unless `paths` is given
+- [x] The innovation draw selectable between the fitted family and a resample of
+      the model's own standardised residuals
+- [x] The Monte Carlo standard error in the payload, described as the lower bound
+      it measured as
+- [x] Both square-root-of-time ratios reported, on the volatility and the quantile
+- [x] A short history refused for the bootstrap, with the parametric route named
+- [x] Over the wire with a good input and two bad ones
+
+Measured, and the shape of the measurement is the interesting part. The gap
+between the simulated figure and the substitution came to 2.5, 11.0, 8.2 and 0.6
+standard errors over four samples at ten steps and 40,000 paths. Real on average
+and not decisive on every series, because how far a horizon quantile departs from
+a scaled one depends on where the fit sits relative to its long-run level.
+
+The direction is sample-dependent too, which is why the tool reports both ratios
+and the tests assert neither sign on a single series. Over five fat-tailed samples
+the quantile ratio ranged 0.87 to 1.11 with a mean of 0.97, against a mean of 1.08
+under normal innovations. The two effects are a stochastic variance path making
+the total leptokurtic, and aggregation pulling a fat innovation's total towards
+normality.
+
+The listing went from 134,053 to 134,992 characters against 140,000. Extending an
+existing tool rather than adding one is what kept that affordable; the next
+addition needs the budget raised as a decision or a schema trimmed.
