@@ -168,6 +168,7 @@ GROUPS: tuple[Group, ...] = (
             "minimum_track_record_length",
             "backtest_overfitting_probability",
             "superior_predictive_ability",
+            "model_confidence_set",
         ),
     ),
 )

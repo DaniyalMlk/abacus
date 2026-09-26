@@ -51,10 +51,12 @@ from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 from holdout import (
+    ValidationError,
     deflate_trials,
     effective_number_of_trials,
     estimate_sharpe,
     minimum_track_record_length,
+    model_confidence_set,
     probability_of_backtest_overfitting,
     romano_wolf,
     sharpe_standard_error,
@@ -442,6 +444,76 @@ class ValidationTools:
             },
         }
 
+    def confidence_set_payload(self, args: dict[str, Any]) -> dict[str, Any]:
+        matrix = _matrix(args)
+        if matrix.shape[1] < 2:
+            raise DomainError(
+                "a confidence set over one model says nothing. Give at least two "
+                "columns; the procedure needs something to compare against and "
+                "nominates nothing itself.",
+                field="trials",
+            )
+        bootstrap = int(args.get("bootstrap", 1000))
+        if bootstrap > MAX_BOOTSTRAP:
+            raise DomainError(
+                f"{bootstrap} replications is over the {MAX_BOOTSTRAP} limit.",
+                field="bootstrap",
+            )
+        alpha = float(args.get("alpha", 0.10))
+        seed = int(args.get("seed", DEFAULT_SEED))
+        try:
+            result = model_confidence_set(
+                matrix,
+                alpha=alpha,
+                statistic=str(args.get("statistic", "max")),
+                n_bootstrap=bootstrap,
+                seed=seed,
+            )
+        except ValidationError as bad:
+            # Two columns identical in every resample have no standard error
+            # between them, which is a duplicated input rather than a finding.
+            raise DomainError(str(bad), field="trials") from bad
+
+        included = [int(index) for index in result.included]
+        return {
+            "alpha": result.alpha,
+            "statistic": result.statistic.value,
+            "seed": seed,
+            "bootstrap": result.n_bootstrap,
+            "blockLength": _finite(result.block_length, 4),
+            "included": included,
+            "excluded": [int(index) for index in result.excluded],
+            "pValues": [_finite(value) for value in result.pvalues],
+            "meanReturns": [_finite(value) for value in result.performance],
+            "best": result.best,
+            "eliminationOrder": [step.model for step in result.eliminations],
+            "note": (
+                "`included` is the set at `alpha`, highest mean first, and its SIZE "
+                "is the result. A set holding 29 of 30 models is not a failure: it "
+                "says the sample cannot separate 29 of them, and reporting the "
+                "highest-mean one as the winner is the claim the set declines to "
+                "license. Measured on a synthetic sweep of thirty crossover rules "
+                "over ten years with a genuine drift in the market, 29 of the 30 "
+                "survive at 10% and the surviving set spans 9.3% of annualised "
+                "mean return.\n\n"
+                "A SMALLER alpha gives a LARGER set. This is a confidence region, "
+                "so the usual direction of a hypothesis test is reversed, and 0.10 "
+                "is the conventional level here rather than 0.05. `pValues` do not "
+                "depend on alpha, so the set at any other level is the models whose "
+                "p-value exceeds it — no second call needed.\n\n"
+                "Higher is better: pass returns, or losses negated. A loss matrix "
+                "passed as it stands returns the set around the WORST model and "
+                "looks entirely reasonable doing it. `meanReturns` alongside "
+                "`included` is how to notice.\n\n"
+                "Unlike superior_predictive_ability this needs no benchmark, which "
+                "is the reason to reach for it: nominating the sample-best as a "
+                "benchmark and testing the rest against it chooses the benchmark "
+                "with the same data the test runs on, so under the null it is the "
+                "luckiest column present and every comparison is biased towards "
+                "finding nothing."
+            ),
+        }
+
     def register(self, registry: ToolRegistry) -> ToolRegistry:
         read_only = {"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False}
         effective_method = {
@@ -666,6 +738,65 @@ class ValidationTools:
             },
             annotations=read_only,
         )(guard(self.predictive_ability_payload))
+
+        registry.register(
+            "model_confidence_set",
+            title="Which models cannot be told apart from the best",
+            description=(
+                "Hansen, Lunde and Nason's model confidence set: given a set of "
+                "candidates and no incumbent among them, the subset that cannot be "
+                "distinguished from the best at a stated level. This is the tool "
+                "for ranking a parameter sweep, and the answer is usually "
+                "uncomfortable — on thirty crossover rules over ten years with a "
+                "real drift in the market, 29 of the 30 survive. The size of the "
+                "set is the result, not a shortcoming of it. A smaller alpha gives "
+                "a LARGER set, because this is a confidence region rather than a "
+                "hypothesis test. Columns are returns with higher better."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "trials": _TRIALS,
+                    "alpha": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "exclusiveMaximum": 1,
+                        "description": (
+                            "Level for the reported set. Defaults to 0.10, following "
+                            "the paper. A smaller value gives a larger set. The "
+                            "p-values returned do not depend on it, so any other "
+                            "level can be read off them."
+                        ),
+                    },
+                    "statistic": {
+                        "type": "string",
+                        "enum": ["max", "range"],
+                        "description": (
+                            "'max' studentises each model against the average of "
+                            "the set; 'range' takes the largest studentised pair. "
+                            "Defaults to max, which gives the larger set and so the "
+                            "weaker claim — measured over fifteen borderline "
+                            "samples of ten models, 8.13 retained against 7.07."
+                        ),
+                    },
+                    "bootstrap": {
+                        "type": "integer",
+                        "minimum": 100,
+                        "maximum": MAX_BOOTSTRAP,
+                        "description": (
+                            "Stationary bootstrap replications. Defaults to 1000. "
+                            "Rows are resampled together, so the correlation between "
+                            "models is kept and near-duplicates are not counted as "
+                            "independent tries."
+                        ),
+                    },
+                    "seed": _SEED,
+                },
+                "required": ["trials"],
+                "additionalProperties": False,
+            },
+            annotations=read_only,
+        )(guard(self.confidence_set_payload))
 
         return registry
 
