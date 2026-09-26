@@ -838,3 +838,168 @@ def test_the_multiplier_closes_the_workflow_on_a_fat_tailed_series(
     assert 18.0 < fat_breaches / samples < 26.0
     assert 24.0 < thin_breaches / samples < 33.0
     assert fat_breaches < thin_breaches
+
+
+# -- the horizon, simulated --------------------------------------------------
+
+
+def test_the_horizon_simulation_is_absent_unless_paths_are_asked_for(
+    registry: ToolRegistry,
+) -> None:
+    """The work is paths times horizon, so a caller who wants the parameters
+    alone should not pay for it."""
+    payload = call(registry, "conditional_volatility", {"returns": garch_path(400)})
+    assert "horizonRisk" not in payload
+
+
+def test_the_simulated_horizon_agrees_with_the_analytic_volatility(
+    registry: ToolRegistry,
+) -> None:
+    """The one part of the simulation that has an exact answer to check against.
+
+    The variance of the accumulated return is the sum of the expected variances
+    along the path, because the residuals are a martingale difference sequence. So
+    the simulated volatility has to reproduce the analytic aggregation whatever the
+    quantile does — and if the two disagreed, the accumulation would be wrong and
+    every quantile with it.
+    """
+    payload = call(
+        registry,
+        "conditional_volatility",
+        {"returns": garch_path(1200), "horizon": 10, "paths": 10_000},
+    )
+    simulated = payload["horizonRisk"]
+    assert simulated["paths"] == 10_000
+    assert simulated["steps"] == 10
+    assert simulated["draw"] == "bootstrap"
+    assert simulated["simulatedVolatility"] == pytest.approx(
+        simulated["analyticVolatility"], rel=0.03
+    )
+    assert simulated["analyticVolatility"] == pytest.approx(
+        payload["horizonVolatility"], rel=1e-9
+    )
+
+
+def test_the_horizon_quantile_is_not_the_volatility_times_a_multiplier(
+    registry: ToolRegistry,
+) -> None:
+    """The reason the simulation exists, as a number rather than as an argument.
+
+    Multiplying the horizon volatility by the one-step quantile multiplier is the
+    substitution the tool's note warns against. The simulated figure is larger, and
+    the size of the gap in units of the simulation's own error is the evidence that
+    it is a difference rather than noise.
+
+    Measured over four samples at ten steps and 40,000 paths, the gap came to 2.5,
+    11.0, 8.2 and 0.6 standard errors — mean 5.5. So it is *not* decisive on every
+    sample, and that variation is itself worth knowing: how far the horizon quantile
+    departs from a scaled one depends on where the fit sits relative to its long-run
+    level, which changes from series to series. The assertion is on the mean over
+    samples and on the sign, not on any single run being significant.
+    """
+    gaps = []
+    for seed in range(4):
+        payload = call(
+            registry,
+            "conditional_volatility",
+            {
+                "returns": garch_path(1500, seed=8 + seed),
+                "horizon": 10,
+                "paths": 40_000,
+                "draw": "parametric",
+                "includeForecasts": False,
+            },
+        )
+        simulated = payload["horizonRisk"]
+        substituted = payload["quantileMultiplier"] * payload["horizonVolatility"]
+        gaps.append((simulated["valueAtRisk"] - substituted) / simulated["standardError"])
+    assert sum(gaps) / len(gaps) > 2.0
+    assert sum(gap > 0.0 for gap in gaps) >= 3
+
+
+def test_the_two_square_root_of_time_ratios_disagree(registry: ToolRegistry) -> None:
+    """Both are reported because they are different quantities.
+
+    The volatility ratio and the quantile ratio can sit on opposite sides of one,
+    and a caller handed only the first would read the horizon as conservative when
+    it is not.
+    """
+    payload = call(
+        registry,
+        "conditional_volatility",
+        {"returns": garch_path(1500), "horizon": 10, "paths": 20_000, "draw": "parametric"},
+    )
+    simulated = payload["horizonRisk"]
+    assert simulated["quantileAgainstSquareRootOfTime"] > 1.0
+    assert simulated["quantileAgainstSquareRootOfTime"] > (
+        simulated["volatilityAgainstSquareRootOfTime"]
+    )
+
+
+def test_the_relative_error_falls_as_the_path_count_rises(registry: ToolRegistry) -> None:
+    data = garch_path(1200)
+    errors = {}
+    for paths in (2_000, 40_000):
+        payload = call(
+            registry,
+            "conditional_volatility",
+            {"returns": data, "horizon": 5, "paths": paths, "draw": "parametric"},
+        )
+        errors[paths] = payload["horizonRisk"]["relativeStandardError"]
+    assert errors[2_000] > errors[40_000]
+    assert errors[40_000] < 0.03
+
+
+def test_a_path_count_below_the_floor_is_refused_with_the_reason(
+    registry: ToolRegistry,
+) -> None:
+    with pytest.raises(DomainError, match="quantile of anything"):
+        call(
+            registry,
+            "conditional_volatility",
+            {"returns": garch_path(400), "paths": 50},
+        )
+
+
+def test_bootstrapping_a_short_history_is_refused_rather_than_extrapolated(
+    registry: ToolRegistry,
+) -> None:
+    """A bootstrap cannot draw past the worst residual it holds.
+
+    The library's floor is 250 observations for a resampled draw. The refusal names
+    the parametric route, which extrapolates and says so, so a caller has somewhere
+    to go rather than only something they cannot have.
+    """
+    short = garch_path(150)
+    with pytest.raises(DomainError, match="too few"):
+        call(
+            registry,
+            "conditional_volatility",
+            {"returns": short, "paths": 2_000, "draw": "bootstrap"},
+        )
+    parametric = call(
+        registry,
+        "conditional_volatility",
+        {"returns": short, "paths": 2_000, "draw": "parametric"},
+    )
+    assert parametric["horizonRisk"]["valueAtRisk"] > 0.0
+
+
+def test_the_horizon_payload_is_strict_json(registry: ToolRegistry) -> None:
+    payload = call(
+        registry,
+        "conditional_volatility",
+        {"returns": garch_path(600), "paths": 2_000, "includeForecasts": False},
+    )
+    json.dumps(payload, allow_nan=False)
+
+
+def test_the_same_seed_gives_the_same_horizon_figure(registry: ToolRegistry) -> None:
+    """Annotated idempotent, so it has to be."""
+    data = garch_path(600)
+    arguments = {"returns": data, "paths": 3_000, "includeForecasts": False}
+    first = call(registry, "conditional_volatility", dict(arguments))
+    second = call(registry, "conditional_volatility", dict(arguments))
+    assert first["horizonRisk"]["valueAtRisk"] == second["horizonRisk"]["valueAtRisk"]
+    moved = call(registry, "conditional_volatility", {**arguments, "seed": 99})
+    assert moved["horizonRisk"]["valueAtRisk"] != first["horizonRisk"]["valueAtRisk"]
