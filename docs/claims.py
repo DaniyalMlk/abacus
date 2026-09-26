@@ -221,6 +221,18 @@ CLAIMS: tuple[Claim, ...] = (
         test="test_the_note_refuses_the_flattering_summary",
     ),
     Claim(
+        figure="2.5, 11.0, 8.2 and 0.6",
+        about=(
+            "The gap between the simulated horizon value at risk and the "
+            "substitution it replaces — the horizon volatility times the one-step "
+            "quantile multiplier — in units of the simulation's own standard "
+            "error, over four samples. Quoted to say that the gap is real on "
+            "average and not decisive on every series."
+        ),
+        module="tests/test_model_validation.py",
+        test="test_the_horizon_quantile_is_not_the_volatility_times_a_multiplier",
+    ),
+    Claim(
         figure="41% larger at four degrees of freedom",
         about=(
             "How much wider a forecast becomes if the raw Student-t quantile is "
