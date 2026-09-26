@@ -93,7 +93,9 @@ from shortfall import (
     sortino as sortino_ratio,
 )
 from shortfall import validate as validate_risk_model
+from shortfall.horizon import MAX_PATHS, MIN_PATHS, Innovations, horizon_risk
 from shortfall.parametric import is_monotone
+from shortfall.series import TooShort
 from shortfall.volatility import MIN_OBSERVATIONS as MIN_GARCH_OBSERVATIONS
 from shortfall.volatility import Innovation, fat_tail_test, fit_garch
 
@@ -1142,6 +1144,44 @@ class RiskTools:
                 "identified": verdict.identified,
                 "fat": verdict.fat,
             }
+        simulated_paths = int(args.get("paths", 0))
+        if simulated_paths:
+            if not MIN_PATHS <= simulated_paths <= MAX_PATHS:
+                raise DomainError(
+                    f"{simulated_paths} paths is outside {MIN_PATHS} to {MAX_PATHS}. "
+                    f"Below {MIN_PATHS} the tail of the simulation holds too few "
+                    "paths to be a quantile of anything.",
+                    field="paths",
+                )
+            try:
+                simulated = horizon_risk(
+                    fitted,
+                    observed,
+                    steps=horizon,
+                    confidence=confidence,
+                    paths=simulated_paths,
+                    innovations=Innovations(str(args.get("draw", "bootstrap"))),
+                    seed=int(args.get("seed", 0)),
+                )
+            except (ValueError, TooShort) as bad:
+                raise DomainError(str(bad), field="paths") from bad
+            payload["horizonRisk"] = {
+                "paths": simulated.paths,
+                "draw": simulated.innovations.value,
+                "steps": simulated.steps,
+                "valueAtRisk": simulated.value_at_risk,
+                "expectedShortfall": simulated.expected_shortfall,
+                "standardError": simulated.standard_error,
+                "relativeStandardError": simulated.relative_standard_error,
+                "simulatedVolatility": simulated.simulated_volatility,
+                "analyticVolatility": simulated.analytic_volatility,
+                "volatilityAgainstSquareRootOfTime": (
+                    simulated.scaling_against_square_root_of_time
+                ),
+                "quantileAgainstSquareRootOfTime": (
+                    simulated.quantile_against_square_root_of_time
+                ),
+            }
         if include:
             payload["volatilityForecasts"] = list(fitted.volatilities)
         payload["note"] = (
@@ -1183,6 +1223,19 @@ class RiskTools:
             "measured over 200 Gaussian samples, a nominal 5% test rejected 5 "
             "times. Read a rejection as meaning what it says and a near miss as "
             "weaker evidence against a fat tail than it looks.\n\n"
+            "`horizonRisk` appears only when `paths` is given, because the work is "
+            "paths times steps. Ask for it rather than multiplying "
+            "`horizonVolatility` by a quantile: the sum of the horizon's "
+            "innovations is not a member of the family they were drawn from, so "
+            "there is no quantile to multiply by, and the error that substitution "
+            "makes does not have a fixed sign. Measured, the horizon quantile came "
+            "to 1.08 times the square-root-of-time figure under normal innovations "
+            "and 0.97 times it under a fitted tail near four and a half degrees of "
+            "freedom — a stochastic variance path makes the total leptokurtic and "
+            "pushes it up, while aggregating fat innovations pulls the total "
+            "towards normality and pushes it down. `standardError` is a LOWER "
+            "bound on the Monte Carlo error; at 20,000 paths it measured 0.89 of "
+            "the observed run-to-run spread.\n\n"
             "What estimating the tail buys, measured on regime-switching series: "
             "the 99% breach count over 2000 observations falls from 28.2 to 22.45 "
             "against a nominal 20, so about 70% of the excess a Gaussian GARCH "
@@ -1663,6 +1716,40 @@ class RiskTools:
                         "description": (
                             "Confidence for the conditional value at risk, expected "
                             "shortfall and quantile multiplier. Defaults to 0.99."
+                        ),
+                    },
+                    "paths": {
+                        "type": "integer",
+                        "minimum": MIN_PATHS,
+                        "maximum": MAX_PATHS,
+                        "description": (
+                            "Simulate the risk over `horizon` periods from this many "
+                            "paths, returning `horizonRisk`. Omit for none: the work "
+                            "is paths times horizon. This is the only honest route to "
+                            "a multi-period quantile, because the sum of the "
+                            "horizon's innovations is not a member of the family they "
+                            "were drawn from."
+                        ),
+                    },
+                    "draw": {
+                        "type": "string",
+                        "enum": ["bootstrap", "parametric"],
+                        "description": (
+                            "Where the simulated innovations come from. 'bootstrap' "
+                            "resamples the model's own standardised residuals and "
+                            "assumes no tail shape; 'parametric' draws from the "
+                            "fitted distribution. Defaults to bootstrap, which needs "
+                            "at least 250 observations."
+                        ),
+                    },
+                    "seed": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": (
+                            "Seed for the simulation, so two identical calls agree. "
+                            "Defaults to 0 rather than to randomness, because a tool "
+                            "annotated idempotent that is not is worse than one that "
+                            "admits it."
                         ),
                     },
                 },
