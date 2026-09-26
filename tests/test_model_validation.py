@@ -890,8 +890,8 @@ def test_the_horizon_quantile_is_not_the_volatility_times_a_multiplier(
     the size of the gap in units of the simulation's own error is the evidence that
     it is a difference rather than noise.
 
-    Measured over four samples at ten steps and 40,000 paths, the gap came to 2.5,
-    11.0, 8.2 and 0.6 standard errors — mean 5.5. So it is *not* decisive on every
+    Measured over four samples at ten steps and 40,000 paths, the gap came to
+    2.5, 11.0, 8.2 and 0.6 standard errors — mean 5.5. So it is *not* decisive on every
     sample, and that variation is itself worth knowing: how far the horizon quantile
     departs from a scaled one depends on where the fit sits relative to its long-run
     level, which changes from series to series. The assertion is on the mean over
