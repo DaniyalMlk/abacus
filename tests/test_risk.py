@@ -303,7 +303,15 @@ def test_the_historical_value_at_risk_is_an_order_statistic_of_the_portfolio(
 
 
 @pytest.mark.parametrize(
-    "method", ["normal", "student-t", "cornish-fisher", "historical", "filtered-historical"]
+    "method",
+    [
+        "normal",
+        "student-t",
+        "cornish-fisher",
+        "historical",
+        "filtered-historical",
+        "extreme-value",
+    ],
 )
 def test_expected_shortfall_is_never_below_value_at_risk(
     registry: ToolRegistry, method: str
@@ -311,7 +319,7 @@ def test_expected_shortfall_is_never_below_value_at_risk(
     """An identity, not an approximation: ES is a mean over the tail VaR bounds.
 
     It holds for every method here, which makes it the one assertion that can be
-    made across all five and is worth making for exactly that reason.
+    made across all six and is worth making for exactly that reason.
     """
     risk = call(
         registry,
@@ -434,7 +442,9 @@ def test_a_handle_reproduces_the_inline_parametric_answer_exactly(
 # -- what a handle cannot do -------------------------------------------------
 
 
-@pytest.mark.parametrize("method", ["historical", "filtered-historical", "cornish-fisher"])
+@pytest.mark.parametrize(
+    "method", ["historical", "filtered-historical", "cornish-fisher", "extreme-value"]
+)
 def test_a_handle_is_refused_for_the_methods_that_read_the_path(
     registry: ToolRegistry, method: str
 ) -> None:
@@ -1130,3 +1140,231 @@ def test_a_budget_count_mismatch_is_refused(registry: ToolRegistry) -> None:
         },
     )
     assert "2 budgets for 4 assets" in str(error["message"])
+
+
+# -- the fitted tail ----------------------------------------------------------
+
+
+def fat_tailed(periods: int = 2000, *, seed: int = 11) -> list[list[float]]:
+    """A returns matrix whose columns have a genuinely heavy tail.
+
+    A common Student-t factor on four degrees of freedom plus lighter noise. Four
+    degrees of freedom because the tail index of a Student-t is the reciprocal of
+    its degrees of freedom, so the shape the fit should be reaching for is 0.25 and
+    the test has something to compare against rather than only itself.
+    """
+    rng = random.Random(seed)
+
+    def student_t() -> float:
+        chi_square = 2.0 * rng.gammavariate(2.0, 1.0)
+        return rng.gauss(0.0, 1.0) / math.sqrt(chi_square / 4.0)
+
+    factor = [0.004 * student_t() for _ in range(periods)]
+    return [
+        [factor[t] * (0.6 + 0.2 * a) + rng.gauss(0.0, 0.002) for a in range(4)]
+        for t in range(periods)
+    ]
+
+
+def tail_call(registry: ToolRegistry, **extra: Any) -> dict[str, Any]:
+    return call(
+        registry,
+        "portfolio_tail_risk",
+        {
+            "returns": fat_tailed(),
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+            "method": "extreme-value",
+            **extra,
+        },
+    )
+
+
+def test_the_fitted_tail_reports_the_fit_and_not_only_the_figure(
+    registry: ToolRegistry,
+) -> None:
+    """A far-tail number without its fit beside it cannot be judged at all.
+
+    The shape decides the whole shape of the extrapolation and its standard error
+    decides whether the shape means anything; the exceedance count says how much
+    data the two came from; and the lowest confidence says where the fit stops
+    applying. All four are in the payload.
+    """
+    risk = tail_call(registry, confidence=0.999)
+    assert risk["method"] == "extreme-value"
+    assert risk["exceedances"] == 99
+    assert risk["threshold"] > 0.0
+    assert 0.0 < risk["shape"] < 1.0
+    assert risk["shapeStandardError"] > 0.0
+    assert risk["scale"] > 0.0
+    assert risk["lowestConfidence"] == pytest.approx(1.0 - 99 / 2000)
+    # A heavy tail has no upper bound, so there is no largest possible loss.
+    assert risk["upperEndpoint"] is None
+    assert risk["tailFraction"] == 0.05
+    assert risk["tailMethod"] == "maximum_likelihood"
+
+
+def test_the_fitted_tail_exceeds_the_historical_one_far_out(
+    registry: ToolRegistry,
+) -> None:
+    """Which is the reason the method exists rather than a property of this sample.
+
+    Historical simulation cannot report a loss larger than the worst observed, and
+    at 99.99% over 2,000 observations the worst observed is what it returns. The fit
+    extrapolates past it. At 99% both are reading the same part of the sample and
+    they agree to within a fifth, which is the other half of the claim: the method
+    is not simply wider everywhere.
+    """
+    shared = {
+        "returns": fat_tailed(),
+        "assets": ASSETS,
+        "weights": WEIGHTS,
+        "periodsPerYear": PERIODS,
+    }
+    far_fit = call(
+        registry,
+        "portfolio_tail_risk",
+        {**shared, "method": "extreme-value", "confidence": 0.9999},
+    )
+    far_sample = call(
+        registry,
+        "portfolio_tail_risk",
+        {**shared, "method": "historical", "confidence": 0.9999},
+    )
+    assert far_fit["valueAtRisk"] > far_sample["valueAtRisk"]
+    assert far_fit["isExtrapolated"] is True
+    assert far_fit["observedBeyond"] == 0
+
+    near_fit = call(
+        registry,
+        "portfolio_tail_risk",
+        {**shared, "method": "extreme-value", "confidence": 0.99},
+    )
+    near_sample = call(
+        registry,
+        "portfolio_tail_risk",
+        {**shared, "method": "historical", "confidence": 0.99},
+    )
+    assert near_fit["valueAtRisk"] == pytest.approx(
+        near_sample["valueAtRisk"], rel=0.2
+    )
+    assert near_fit["isExtrapolated"] is False
+    assert near_fit["observedBeyond"] > 0
+
+
+def test_the_mean_excess_curve_comes_back_so_the_threshold_can_be_revisited(
+    registry: ToolRegistry,
+) -> None:
+    """A default threshold with no diagnostic is a choice the caller cannot revisit.
+
+    Above a generalised Pareto threshold the mean excess is linear in the threshold
+    with slope shape/(1 - shape), so the curve is both the way to choose where to
+    fit and a second reading of the shape. The standard errors are there because
+    successive points share nearly all their data and the curve looks far smoother
+    than its points are independent.
+    """
+    curve = tail_call(registry)["meanExcessCurve"]
+    assert len(curve) == 8
+    thresholds = [point["threshold"] for point in curve]
+    counts = [point["exceedances"] for point in curve]
+    assert thresholds == sorted(thresholds)
+    assert counts == sorted(counts, reverse=True)
+    assert all(point["meanExcess"] > 0.0 for point in curve)
+    assert all(point["standardError"] > 0.0 for point in curve)
+
+
+def test_a_wider_threshold_moves_the_shape_and_the_exceedance_count(
+    registry: ToolRegistry,
+) -> None:
+    """The bias-variance trade, exposed as an argument rather than a constant.
+
+    More exceedances means a tighter standard error on the shape and a threshold
+    further inside the body, which biases the shape towards zero. Both directions
+    are asserted, because a tool that moved the count without moving the estimate
+    would not be fitting anything.
+    """
+    tight = tail_call(registry, tailFraction=0.02)
+    wide = tail_call(registry, tailFraction=0.20)
+    assert wide["exceedances"] > tight["exceedances"]
+    assert wide["threshold"] < tight["threshold"]
+    assert wide["shapeStandardError"] < tight["shapeStandardError"]
+
+
+def test_the_moment_estimator_is_available_and_reports_no_standard_error(
+    registry: ToolRegistry,
+) -> None:
+    """Null rather than absent, so a consumer does not have to tell them apart.
+
+    The asymptotic variance of the likelihood estimator is not the moment
+    estimator's, and reporting it here would be a number that looks like a
+    standard error and is not one.
+    """
+    moments = tail_call(registry, tailMethod="probability_weighted_moments")
+    assert moments["tailMethod"] == "probability_weighted_moments"
+    assert moments["shapeStandardError"] is None
+    assert moments["scaleStandardError"] is None
+    assert moments["shape"] < 1.0
+    likelihood = tail_call(registry)
+    assert likelihood["shape"] == pytest.approx(moments["shape"], abs=0.1)
+
+
+def test_a_confidence_inside_the_body_is_refused_with_the_number_that_is_not(
+    registry: ToolRegistry,
+) -> None:
+    """The fit deliberately knows nothing below its threshold.
+
+    Reading the empirical quantile there instead would be a different estimator
+    answering under this one's name, so it refuses — and the message has to carry
+    the lowest confidence the fit covers, because that is the number the caller
+    needs to fix the call.
+    """
+    error = refuse(
+        registry,
+        "portfolio_tail_risk",
+        {
+            "returns": fat_tailed(),
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+            "method": "extreme-value",
+            "confidence": 0.9,
+        },
+    )
+    message = str(error["message"])
+    assert "0.95" in message
+    assert "inside the body" in message
+
+
+def test_a_threshold_leaving_too_few_exceedances_is_refused(
+    registry: ToolRegistry,
+) -> None:
+    error = refuse(
+        registry,
+        "portfolio_tail_risk",
+        {
+            "returns": one_factor(periods=120),
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+            "method": "extreme-value",
+            "tailFraction": 0.02,
+        },
+    )
+    message = str(error["message"])
+    # The refusal names the count it got and the count it wanted, which is what a
+    # caller needs to pick a workable tail fraction rather than guess again.
+    assert "left 1 of 120 losses above it" in message
+    assert "below the 10 a fit will accept" in message
+
+
+def test_the_note_says_how_much_of_the_answer_is_extrapolation(
+    registry: ToolRegistry,
+) -> None:
+    far = tail_call(registry, confidence=0.9999)
+    near = tail_call(registry, confidence=0.99)
+    assert "Nothing in the sample is as bad as this figure" in far["note"]
+    assert "are at least this bad" in near["note"]
+    for payload in (far, near):
+        assert "says nothing below" in payload["note"]
+        assert "mean excess curve" in payload["note"]
