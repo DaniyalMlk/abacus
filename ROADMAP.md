@@ -277,3 +277,56 @@ normality.
 The listing went from 134,053 to 134,992 characters against 140,000. Extending an
 existing tool rather than adding one is what kept that affordable; the next
 addition needs the budget raised as a decision or a schema trimmed.
+
+## Phase 18 — The far tail, where the sample has nothing to say
+
+Every method on `portfolio_tail_risk` answered a far-tail question with
+information about somewhere else: the historical ones read the order statistics
+and cannot report a loss larger than the worst observed, and the parametric ones
+fit a shape to the whole sample, where the bulk dominates the likelihood. At 99.9%
+on a few years of daily data neither is answering.
+
+- [x] `extreme-value` as a sixth method, fitting a generalised Pareto to the
+      exceedances over a threshold and extrapolating past the largest observation
+- [x] The fit reported beside the figure: shape with its standard error, scale,
+      exceedance count, lowest confidence covered, upper endpoint if there is one
+- [x] Whether the answer is beyond every loss in the sample, as a field
+- [x] The mean excess curve in the payload, because the threshold is a
+      bias-variance choice and a default with no diagnostic cannot be revisited
+- [x] Both estimators exposed, with the moment one's standard error null rather
+      than borrowed from the likelihood's
+- [x] Over the wire with a good input and two bad ones, one of them a confidence
+      that is legal for every other method on the tool and inside the body for this
+- [x] Inside the existing listing budget, by extending a tool rather than adding
+
+The listing went from 134,992 to 135,998 characters against 140,000. Extending
+`portfolio_tail_risk` rather than adding a tool is the whole reason that was
+affordable; the tool itself went from 5,059 to 6,065 against a per-tool budget of
+12,000.
+
+Measured against a known truth rather than against the tool's own output. The test
+generator is a Student-t factor on four degrees of freedom, whose tail index is the
+reciprocal of that — 0.25 exactly. Above the worst 5% of 2,000 observations the fit
+reads 0.2275 with a standard error of 0.12; above the worst 20% it reads 0.1176
+with a standard error of 0.056. Biased low at both, and more so at the higher
+threshold count, because a Student-t approaches its limiting tail slowly and a
+threshold inside the body is still being told about the body.
+
+At 99.99% the fitted figure exceeds the historical one and nothing in the sample is
+that bad. At 99% the two agree to within a fifth, which is the other half of the
+claim worth making: the method is not simply wider everywhere, it is answering a
+question the others cannot reach.
+
+Two things this run found rather than built. Adding a claim to `docs/claims.py`
+exposed a weakness in its join: the check falls back to a module-level constant, so
+the figure 0.25 was matching the test module's weights vector by accident and was
+being "checked" by nothing. The test now asserts the fitted shape against the known
+tail index, which is what the claim says. And the skill's own size section was
+stale — 35 tools and 115,000 characters against the 39 and 136,000 the surface
+actually is.
+
+**Waiting on a budget decision, not on work.** `tenor` gained floating rate note
+pricing with a discount margin and two durations, and `slippage` gained post-trade
+mark-outs with a benchmark adjustment. Neither fits: each needs a new tool of
+several thousand characters and there are about 4,000 left. The budget is
+deliberately a decision rather than a limit, so it has not been raised here.

@@ -243,4 +243,26 @@ CLAIMS: tuple[Claim, ...] = (
         module="tests/test_model_validation.py",
         test="test_the_quantile_multiplier_is_the_standardised_quantile",
     ),
+    Claim(
+        figure="0.25",
+        about=(
+            "The tail index of a Student-t on four degrees of freedom, which is the "
+            "reciprocal of its degrees of freedom. The known truth the "
+            "extreme-value method's fitted shape is measured against, rather than "
+            "against its own output."
+        ),
+        module="tests/test_risk.py",
+        test="test_the_fitted_tail_reports_the_fit_and_not_only_the_figure",
+    ),
+    Claim(
+        figure="99.99%",
+        about=(
+            "The confidence at which historical simulation on 2,000 observations "
+            "can only return the worst loss observed, and the fitted tail exceeds "
+            "it. At 99% the two agree to within a fifth, which is the other half "
+            "of the claim: the fitted method is not simply wider everywhere."
+        ),
+        module="tests/test_risk.py",
+        test="test_the_fitted_tail_exceeds_the_historical_one_far_out",
+    ),
 )

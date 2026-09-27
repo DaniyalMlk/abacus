@@ -90,7 +90,10 @@ out of a handle when the legs are no longer in reach.
 
 **Portfolio risk from returns.** `estimate_return_moments` first — it returns a
 handle, and the parametric tools run from it without resending the matrix.
-`portfolio_tail_risk` for value at risk and expected shortfall,
+`portfolio_tail_risk` for value at risk and expected shortfall — and above about
+99.5% on a few years of data, ask for its `extreme-value` method, because every
+other one there is either reading two observations or reporting a shape fitted to
+the body,
 `portfolio_risk_contributions` for where the risk sits, `risk_parity_weights`
 for weights that equalise it, `portfolio_drawdown` for the path statistics. The
 last of those, and the historical tail-risk methods, need the matrix rather than
@@ -241,6 +244,27 @@ return path and the handle holds only second moments. Send the matrix:
 }
 ```
 
+Neither can the fitted tail, for the same reason, and it is the one to reach for
+once the confidence asked about is past what the sample covers. It reports the
+shape with its standard error, how many observations exceeded the threshold, the
+lowest confidence the fit says anything about, and whether the answer is beyond
+every loss in the sample — which at a high enough confidence it will be, and that
+is the estimator working rather than failing.
+
+```transcript
+{
+  "tool": "portfolio_tail_risk",
+  "arguments": {
+    "returns": "$returns",
+    "weights": [0.4, 0.25, 0.15, 0.2],
+    "periodsPerYear": 252,
+    "method": "extreme-value",
+    "confidence": 0.999,
+    "tailFraction": 0.1
+  }
+}
+```
+
 ## Worked transcript: judging a backtest
 
 A parameter sweep produced a best Sharpe ratio. Three questions decide whether
@@ -282,8 +306,7 @@ the record is long enough to be real and the selection is still worthless.
 ## The size of this surface
 
 The tool listing is loaded before any work happens, and it grows with every
-group added. It is currently 35 tools and about 115,000 characters of JSON, of
-which roughly 15,000 are descriptions and 91,000 are schemas. The budget is
+group added. It is currently 39 tools and about 136,000 characters of JSON. The budget is
 140,000 characters in total and 12,000 for any single tool, enforced by a test,
 so crossing it is a decision rather than a drift. `tools/list` paginates, and a
 caller that needs one group can page rather than load all of it.

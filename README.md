@@ -144,7 +144,7 @@ It exits non-zero on a failure, so it works as a gate rather than a report.
 | `position_book_greeks` | Total value and net sensitivities, with the per-leg breakdown |
 | `position_book_scenarios` | Reprice a book across a grid of spot and volatility shifts |
 | `estimate_return_moments` | Covariance from a returns matrix, with shrinkage, diagnostics and a reusable handle |
-| `portfolio_tail_risk` | Value at risk and expected shortfall by five methods, each naming itself |
+| `portfolio_tail_risk` | Value at risk and expected shortfall by six methods, each naming itself, including a tail fitted to the exceedances |
 | `portfolio_risk_contributions` | Euler risk contributions, concentration, effective bets |
 | `risk_parity_weights` | Weights that equalise risk contributions, with the convergence evidence |
 | `portfolio_drawdown` | Deepest drawdown, time underwater, ulcer index, Calmar and Sortino |
@@ -216,6 +216,35 @@ is not one; the contributions themselves are unaffected and still returned.
 cash position or a typo, and scaling it quietly turns the second into a plausible
 answer. The sum is reported on every result and a sum far from one is refused with
 the total named.
+
+**Above about 99.5%, ask for the fitted tail.** `portfolio_tail_risk`'s sixth
+method, `extreme-value`, fits a generalised Pareto to the exceedances over a high
+threshold and extrapolates past the largest observation. It is the only method on
+this surface that can answer a far-tail question at all: the historical ones cannot
+report a loss larger than the worst observed, and the parametric ones report a
+shape fitted to the body, where almost all of the likelihood lives.
+
+The fit comes back with the figure rather than behind it — the shape with its
+standard error, the exceedance count, the lowest confidence the fit says anything
+about, whether the answer is beyond every loss in the sample, and the mean excess
+curve, which is linear above a generalised Pareto threshold with slope
+`shape / (1 - shape)` and is therefore both how to choose the threshold and a
+second reading of the shape.
+
+Three refusals rather than plausible numbers. A confidence below the threshold's
+own exceedance probability is outside the fit, and the error names the lowest legal
+one, because reading the empirical quantile there instead would be a different
+estimator answering under this one's name. A fitted shape at or above one has no
+finite mean, so the expected shortfall comes back null while the value at risk
+still stands. And a threshold leaving fewer than ten exceedances is refused with
+both counts named.
+
+On a Student-t factor with four degrees of freedom — tail index 0.25 exactly — the
+fit reads 0.2275 above the worst 5% of 2,000 observations with a standard error of
+0.12. Biased low, and known to be: a Student-t approaches its limiting tail slowly
+and a threshold that far inside the body is still being told about the body. Above
+the worst 20% the same fit reads 0.1176 with a standard error of 0.056, which is
+the bias-variance trade the `tailFraction` argument exposes rather than decides.
 
 ## Curves and bonds
 
