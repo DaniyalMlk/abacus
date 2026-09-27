@@ -1195,7 +1195,15 @@ def test_the_fitted_tail_reports_the_fit_and_not_only_the_figure(
     assert risk["method"] == "extreme-value"
     assert risk["exceedances"] == 99
     assert risk["threshold"] > 0.0
-    assert 0.0 < risk["shape"] < 1.0
+    # The factor is a Student-t on four degrees of freedom, whose tail index is the
+    # reciprocal of that: 0.25. The fit reads 0.2275 above the worst 5%, with a
+    # standard error of 0.12 — so the truth is well inside one, and the assertion is
+    # against the known value rather than against the tool's own output. It is
+    # biased low, and known to be: a Student-t approaches its limiting tail slowly
+    # and a threshold at the worst 5% is still being told about the body. Above the
+    # worst 20% the same fit reads 0.1176.
+    assert risk["shape"] == pytest.approx(0.25, abs=risk["shapeStandardError"])
+    assert risk["shape"] < 0.25
     assert risk["shapeStandardError"] > 0.0
     assert risk["scale"] > 0.0
     assert risk["lowestConfidence"] == pytest.approx(1.0 - 99 / 2000)
