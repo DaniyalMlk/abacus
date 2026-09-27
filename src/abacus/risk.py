@@ -93,6 +93,12 @@ from shortfall import (
     sortino as sortino_ratio,
 )
 from shortfall import validate as validate_risk_model
+from shortfall.extreme import (
+    MINIMUM_EXCEEDANCES,
+    TailMethod,
+    extreme_risk,
+    mean_excess_curve,
+)
 from shortfall.horizon import MAX_PATHS, MIN_PATHS, Innovations, horizon_risk
 from shortfall.parametric import is_monotone
 from shortfall.series import TooShort
@@ -155,12 +161,24 @@ MAX_REPLICATIONS = 5_000
 #: parameters from a longer history can ask for them without it.
 MAX_FORECAST_SERIES = 5_000
 
-_METHODS = ("normal", "student-t", "cornish-fisher", "historical", "filtered-historical")
+_METHODS = (
+    "normal",
+    "student-t",
+    "cornish-fisher",
+    "historical",
+    "filtered-historical",
+    "extreme-value",
+)
 
 #: The methods that read the return path rather than a summary of it, and so
 #: cannot run from a handle. Named here so the refusal and the tool descriptions
 #: cannot drift apart.
-_PATH_METHODS = ("cornish-fisher", "historical", "filtered-historical")
+_PATH_METHODS = (
+    "cornish-fisher",
+    "historical",
+    "filtered-historical",
+    "extreme-value",
+)
 
 _DISTRIBUTIONS = {
     "normal": Distribution.NORMAL,
@@ -842,6 +860,73 @@ class RiskTools:
             }
             return shared
 
+        if method == "extreme-value":
+            tail_fraction = float(args.get("tailFraction", 0.05))
+            tail_method = TailMethod(str(args.get("tailMethod", "maximum_likelihood")))
+            fitted = extreme_risk(
+                series,
+                confidence=confidence,
+                tail_fraction=tail_fraction,
+                method=tail_method,
+            )
+            fit = fitted.fit
+            shared |= {
+                "valueAtRisk": fitted.value_at_risk,
+                "expectedShortfall": fitted.expected_shortfall,
+                "quantile": fitted.quantile,
+                "confidence": confidence,
+                "tailProbability": fitted.tail_probability,
+                "mean": series.mean,
+                "volatility": series.stdev(),
+                "annualisedVolatility": _annualise_volatility(
+                    series.stdev(), periods_per_year
+                ),
+                "tailFraction": tail_fraction,
+                "tailMethod": tail_method.value,
+                "threshold": fit.threshold,
+                "exceedances": fit.exceedances,
+                "shape": fit.shape,
+                "shapeStandardError": fit.shape_standard_error,
+                "scale": fit.scale,
+                "scaleStandardError": fit.scale_standard_error,
+                "lowestConfidence": fit.lowest_confidence,
+                "upperEndpoint": fit.upper_endpoint,
+                "observedBeyond": fitted.observed_beyond,
+                "isExtrapolated": fitted.is_extrapolated,
+                "meanExcessCurve": [
+                    {
+                        "threshold": point.threshold,
+                        "exceedances": point.exceedances,
+                        "meanExcess": point.mean_excess,
+                        "standardError": point.standard_error,
+                    }
+                    for point in mean_excess_curve(
+                        [-value for value in series.values], points=8
+                    )
+                ],
+                "note": (
+                    f"Fitted above a loss of {fit.threshold:.4%}, which "
+                    f"{fit.exceedances} of {fit.observations} observations exceeded, so "
+                    f"this fit says nothing below {fit.lowest_confidence:.4g} "
+                    "confidence. "
+                    + (
+                        f"Nothing in the sample is as bad as this figure: "
+                        f"{fit.exceedances} exceedances are deciding what happens beyond "
+                        f"all {fit.observations} observations. "
+                        if fitted.is_extrapolated
+                        else f"{fitted.observed_beyond} observation(s) in the sample "
+                        "are at least this bad. "
+                    )
+                    + "A shape near or above one means the tail has no finite mean and "
+                    "the expected shortfall comes back null; a negative one puts a "
+                    "finite bound on the loss and is more often a threshold set inside "
+                    "the body than a finding. The mean excess curve is linear above a "
+                    "generalised Pareto threshold with slope shape/(1 - shape), so the "
+                    "threshold to trust is where it straightens out."
+                ),
+            }
+            return shared
+
         filtered = filtered_historical_risk(
             series,
             confidence=confidence,
@@ -1444,7 +1529,7 @@ class RiskTools:
             title="Value at risk and expected shortfall",
             description=(
                 "Value at risk and expected shortfall for a weighted portfolio, by one "
-                "of five methods, with the method named in the result because the number "
+                "of six methods, with the method named in the result because the number "
                 "does not identify it. 'normal' and 'student-t' need only the first two "
                 "moments and run from a handle. 'cornish-fisher' corrects the normal "
                 "quantile using the portfolio's own skewness and excess kurtosis, and is "
@@ -1452,9 +1537,13 @@ class RiskTools:
                 "outside the region where it is a quantile function at all. "
                 "'historical' takes the tail from the sample; 'filtered-historical' does "
                 "the same after standardising by an exponentially weighted volatility "
-                "and rescaling to today's. The last three read the return path, so they "
-                "need the returns matrix rather than a handle. Losses are positive: a "
-                "value at risk of 0.023 is a 2.3% loss."
+                "and rescaling to today's. 'extreme-value' fits a generalised Pareto to "
+                "the exceedances over a high threshold and extrapolates past the largest "
+                "observation, which is the only method here that can answer above about "
+                "99.5% on a few years of daily data — the others are reading two "
+                "observations or a shape fitted to the body. The last four read the "
+                "return path, so they need the returns matrix rather than a handle. "
+                "Losses are positive: a value at risk of 0.023 is a 2.3% loss."
             ),
             input_schema={
                 "type": "object",
@@ -1500,6 +1589,29 @@ class RiskTools:
                             "Exponential weight on yesterday's variance, for "
                             "'filtered-historical'. Defaults to 0.94, the RiskMetrics "
                             "figure for daily data."
+                        ),
+                    },
+                    "tailFraction": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "maximum": 0.5,
+                        "description": (
+                            "Fraction of the sample to fit above, for 'extreme-value'. "
+                            "Defaults to 0.05. Raising it trades the shape's bias for "
+                            f"its variance; below about {MINIMUM_EXCEEDANCES} "
+                            "exceedances the fit is refused. The mean excess curve in "
+                            "the result is how to choose it."
+                        ),
+                    },
+                    "tailMethod": {
+                        "type": "string",
+                        "enum": [one.value for one in TailMethod],
+                        "description": (
+                            "How the two tail parameters are estimated, for "
+                            "'extreme-value'. Maximum likelihood is the default and the "
+                            "only one with a standard error; the moment estimator is "
+                            "steadier on a few dozen exceedances and cannot report a "
+                            "shape at or above one at all."
                         ),
                     },
                 },
