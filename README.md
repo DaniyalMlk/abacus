@@ -144,7 +144,7 @@ It exits non-zero on a failure, so it works as a gate rather than a report.
 | `position_book_greeks` | Total value and net sensitivities, with the per-leg breakdown |
 | `position_book_scenarios` | Reprice a book across a grid of spot and volatility shifts |
 | `estimate_return_moments` | Covariance from a returns matrix, with shrinkage, diagnostics and a reusable handle |
-| `portfolio_tail_risk` | Value at risk and expected shortfall by six methods, each naming itself, including a tail fitted to the exceedances |
+| `portfolio_tail_risk` | Value at risk and expected shortfall by seven methods, each naming itself, including a tail fitted to the exceedances and a fitted copula |
 | `portfolio_risk_contributions` | Euler risk contributions, concentration, effective bets |
 | `risk_parity_weights` | Weights that equalise risk contributions, with the convergence evidence |
 | `portfolio_drawdown` | Deepest drawdown, time underwater, ulcer index, Calmar and Sortino |
@@ -238,6 +238,39 @@ estimator answering under this one's name. A fitted shape at or above one has no
 finite mean, so the expected shortfall comes back null while the value at risk
 still stands. And a threshold leaving fewer than ten exceedances is refused with
 both counts named.
+
+**When assets fall together, ask for the copula.** The other six methods on that
+tool either tie the joint distribution to a covariance matrix or read the joint
+tail straight off the sample. The first forces the probability of two assets being
+beyond their own `q` quantile together, divided by `q`, to zero as `q` falls — at
+any correlation below one under a normal, and to one number for every pair under a
+multivariate t. The second cannot report a joint event worse than the worst one
+observed. So the question a tail-risk tool is most often asked had no method here
+that could answer it.
+
+`copula` fits the dependence to the ranks and each marginal separately, then
+simulates, and reports the Gaussian-copula figure beside its own from the same
+normal draws — so the gap between them is the assumption rather than an argument.
+The fitted degrees of freedom and the likelihood ratio against the Gaussian
+special case come back with the figure, and the note reads as weak evidence when
+the ratio is weak, because a number quoted without that reads as strong.
+
+Two things about it are worth knowing before reading the output, and both are
+counterintuitive enough that the tool says them.
+
+The gap is widest for a book that looks **diversified**. A book already correlated
+at 0.9 gets nearly the same answer from either copula, because both move it
+together and the portfolio behaves as a single asset whose own marginal tail no
+copula can change. A book correlated at 0.08 is where the covariance matrix is
+most reassuring and most wrong.
+
+And the two measures disagree about the *direction*. At 95% confidence the fitted
+copula's value at risk has been measured 4.0% **below** the Gaussian copula's while
+its expected shortfall is 6.0% above. Tail dependence moves probability mass from
+the near tail to the far tail and the total is one, so a quantile close to the body
+has less beyond it, while the mean of what is beyond is larger. Compare the two
+methods on expected shortfall; reading the 95% value at risk alone says the
+assumption made the book safer.
 
 On a Student-t factor with four degrees of freedom — tail index 0.25 exactly — the
 fit reads 0.2275 above the worst 5% of 2,000 observations with a standard error of

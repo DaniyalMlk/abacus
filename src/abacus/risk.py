@@ -93,6 +93,15 @@ from shortfall import (
     sortino as sortino_ratio,
 )
 from shortfall import validate as validate_risk_model
+from shortfall.copula import (
+    MAX_COPULA_PATHS,
+    MIN_COPULA_OBSERVATIONS,
+    MIN_COPULA_PATHS,
+    CopulaRisk,
+    Family,
+    Marginal,
+    copula_risk,
+)
 from shortfall.extreme import (
     MINIMUM_EXCEEDANCES,
     TailMethod,
@@ -168,6 +177,7 @@ _METHODS = (
     "historical",
     "filtered-historical",
     "extreme-value",
+    "copula",
 )
 
 #: The methods that read the return path rather than a summary of it, and so
@@ -178,7 +188,21 @@ _PATH_METHODS = (
     "historical",
     "filtered-historical",
     "extreme-value",
+    "copula",
 )
+
+#: The copula families and marginals, spelled the way the rest of this surface
+#: spells them. `shortfall` uses an underscore in `student_t` and `extreme_value`;
+#: every other enum here is hyphenated, and a surface that switches convention
+#: between two adjacent arguments is a surface nobody can type from memory.
+_COPULA_FAMILIES = {
+    "gaussian": Family.GAUSSIAN,
+    "student-t": Family.STUDENT_T,
+}
+_COPULA_MARGINALS = {
+    "empirical": Marginal.EMPIRICAL,
+    "extreme-value": Marginal.EXTREME_VALUE,
+}
 
 _DISTRIBUTIONS = {
     "normal": Distribution.NORMAL,
@@ -565,6 +589,55 @@ def _allocation_payload(allocation: Allocation) -> dict[str, Any]:
     }
 
 
+def _copula_note(result: CopulaRisk) -> str:
+    """What the copula figure means, and how much of it to believe.
+
+    Written as a function because it has three cases and the middle one is the
+    important one: a likelihood ratio that does not clear the Gaussian special
+    case by much has to read as weak evidence, or the number beside it will be
+    acted on as though it were strong.
+    """
+    fitted = result.copula
+    if fitted.degrees_of_freedom is None:
+        return (
+            "A Gaussian copula has no tail dependence at any correlation below one: "
+            "the probability that two assets are both beyond their own q quantile, "
+            "divided by q, goes to zero as q falls. That is the reference case, and "
+            "the reason this method exists is that it is usually the wrong one. The "
+            "figure here and gaussianValueAtRisk are the same computation on the same "
+            "draws, so they agree exactly."
+        )
+    strength = (
+        "strong" if fitted.likelihood_ratio > 20.0
+        else "weak" if fitted.likelihood_ratio > 3.84
+        else "no"
+    )
+    return (
+        f"The dependence is fitted to the ranks, so it does not move when a marginal "
+        f"is re-estimated and one joint outlier cannot drag it. The degrees of "
+        f"freedom are what carry joint tail arrival: "
+        f"{fitted.degrees_of_freedom:.4g} here, against a likelihood ratio of "
+        f"{fitted.likelihood_ratio:.4g} versus the Gaussian special case, which is "
+        f"{strength} evidence for any tail dependence at all — the 5% critical value "
+        f"of a chi-square with one degree of freedom is 3.84, and the null sits on "
+        f"the boundary of the parameter space, so read it as indicative. "
+        f"gaussianValueAtRisk and gaussianExpectedShortfall come from the same "
+        f"marginals, the same correlation matrix and the same normal draws, so their "
+        f"difference is the dependence assumption rather than simulation noise; "
+        f"sharing the draws halves the spread of that difference and cannot do better, "
+        f"because the chi-square mixing variable is the whole difference between the "
+        f"two copulas and is not shared. standardError is the Monte Carlo error on "
+        f"the value at risk from {result.paths:,} paths in 20 batches, and it is a "
+        f"lower bound. Compare the two on expected shortfall rather than on value "
+        f"at risk: tail dependence moves probability mass from the near tail to the "
+        f"far tail, and since the total is one, a quantile close to the body can "
+        f"come in *lower* under the copula that has the dependence in it while the "
+        f"mean beyond it comes in higher. At 95% that has been measured at -4.0% on "
+        f"the value at risk against +6.0% on the expected shortfall, so reading the "
+        f"first alone would say the assumption made the book safer."
+    )
+
+
 def _risk_payload(risk: Risk, *, periods_per_year: float) -> dict[str, Any]:
     return {
         "valueAtRisk": risk.value_at_risk,
@@ -858,6 +931,75 @@ class RiskTools:
                     "precision behind it."
                 ),
             }
+            return shared
+
+        if method == "copula":
+            if moments.observations < MIN_COPULA_OBSERVATIONS:
+                raise DomainError(
+                    f"a copula fit needs at least {MIN_COPULA_OBSERVATIONS} "
+                    f"observations and this panel has {moments.observations}. The "
+                    "dependence is estimated from the ranks of every pair, and below "
+                    "that the pairwise estimates are noise. Use 'historical' or "
+                    "'student-t' on a sample this short.",
+                    field="returns",
+                )
+            family = _COPULA_FAMILIES[str(args.get("copulaFamily", "student-t"))]
+            marginal = _COPULA_MARGINALS[str(args.get("copulaMarginal", "empirical"))]
+            fixed = args.get("copulaDegrees")
+            # The path bounds are the schema's, not repeated here. Two copies of a
+            # numeric range drift, and the schema's refusal arrives earlier and reads
+            # better: it names the field and both the bound and the value given.
+            paths = int(args.get("paths", 20_000))
+            result = copula_risk(
+                panel,
+                weights,
+                confidence=confidence,
+                family=family,
+                marginal=marginal,
+                degrees_of_freedom=None if fixed is None else float(fixed),
+                paths=paths,
+                seed=int(args.get("seed", 0)),
+                method=QuantileMethod(quantile_method),
+            )
+            estimated = result.copula
+            pairs = estimated.tail_dependence()
+            shared |= {
+                "valueAtRisk": result.value_at_risk,
+                "expectedShortfall": result.expected_shortfall,
+                "quantile": result.risk.quantile,
+                "confidence": confidence,
+                "tailProbability": result.risk.tail_probability,
+                "mean": series.mean,
+                "volatility": series.stdev(),
+                "annualisedVolatility": _annualise_volatility(
+                    series.stdev(), periods_per_year
+                ),
+                "copulaFamily": str(args.get("copulaFamily", "student-t")),
+                "copulaMarginal": str(args.get("copulaMarginal", "empirical")),
+                "degreesOfFreedom": estimated.degrees_of_freedom,
+                "degreesOfFreedomFitted": fixed is None,
+                "likelihoodRatio": estimated.likelihood_ratio,
+                "paths": result.paths,
+                "standardError": result.standard_error,
+                "gaussianValueAtRisk": result.gaussian_value_at_risk,
+                "gaussianExpectedShortfall": result.gaussian_expected_shortfall,
+                "correlationProjected": estimated.projected,
+                "quantileMethod": quantile_method,
+                "tailDependence": [
+                    {
+                        "first": pair.first,
+                        "second": pair.second,
+                        "correlation": pair.correlation,
+                        "coefficient": pair.coefficient,
+                    }
+                    for pair in sorted(pairs, key=lambda one: -one.coefficient)[:12]
+                ],
+                "note": _copula_note(result),
+            }
+            if family is Family.STUDENT_T:
+                shared["expectedShortfallVersusGaussianCopula"] = (
+                    result.tail_dependence_premium
+                )
             return shared
 
         if method == "extreme-value":
@@ -1541,9 +1683,20 @@ class RiskTools:
                 "the exceedances over a high threshold and extrapolates past the largest "
                 "observation, which is the only method here that can answer above about "
                 "99.5% on a few years of daily data — the others are reading two "
-                "observations or a shape fitted to the body. The last four read the "
-                "return path, so they need the returns matrix rather than a handle. "
-                "Losses are positive: a value at risk of 0.023 is a 2.3% loss."
+                "observations or a shape fitted to the body. 'copula' is the only one "
+                "that does not tie the joint distribution to a covariance matrix: it "
+                "fits the dependence to the ranks and each marginal separately, then "
+                "simulates. Reach for it when the question is what the portfolio loses "
+                "if its assets fall together, because under a normal that probability "
+                "is asymptotically zero at any correlation below one and under a "
+                "multivariate t it is one number for every pair. It reports the "
+                "Gaussian-copula figure beside its own, so the difference is the "
+                "assumption rather than an argument — and that difference is largest "
+                "for a book that looks *diversified*, not one already correlated, "
+                "because near a correlation of one both copulas move everything "
+                "together anyway. The last five read the return "
+                "path, so they need the returns matrix rather than a handle. Losses "
+                "are positive: a value at risk of 0.023 is a 2.3% loss."
             ),
             input_schema={
                 "type": "object",
@@ -1612,6 +1765,61 @@ class RiskTools:
                             "only one with a standard error; the moment estimator is "
                             "steadier on a few dozen exceedances and cannot report a "
                             "shape at or above one at all."
+                        ),
+                    },
+                    "copulaFamily": {
+                        "type": "string",
+                        "enum": list(_COPULA_FAMILIES),
+                        "description": (
+                            "Which copula, for 'copula'. Defaults to student-t, whose "
+                            "extra parameter is what lets assets arrive in their tails "
+                            "together; gaussian is the reference it is measured against "
+                            "and has no tail dependence at any correlation below one."
+                        ),
+                    },
+                    "copulaMarginal": {
+                        "type": "string",
+                        "enum": list(_COPULA_MARGINALS),
+                        "description": (
+                            "Where each asset's own distribution comes from, for "
+                            "'copula'. Defaults to empirical, under which no single "
+                            "asset's draw can exceed its worst observation, so all the "
+                            "extrapolation is in the dependence; extreme-value splices "
+                            "a fitted generalised Pareto onto each loss tail and puts "
+                            "it back."
+                        ),
+                    },
+                    "copulaDegrees": {
+                        "type": "number",
+                        "minimum": 2,
+                        "maximum": 100,
+                        "description": (
+                            "Fix the copula degrees of freedom instead of fitting them. "
+                            "Two reasons to: a stress scenario asks what a heavier joint "
+                            "tail would cost rather than what the sample supports, and "
+                            "the profile likelihood is most of this method's runtime — "
+                            "about twelve seconds on 1,200 observations against under "
+                            "one for the simulation."
+                        ),
+                    },
+                    "paths": {
+                        "type": "integer",
+                        "minimum": MIN_COPULA_PATHS,
+                        "maximum": MAX_COPULA_PATHS,
+                        "description": (
+                            "Simulated paths, for 'copula'. Defaults to 20,000, which "
+                            "costs well under a second; standardError says whether it "
+                            "was enough."
+                        ),
+                    },
+                    "seed": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": (
+                            "Seed for the 'copula' simulation, so two identical calls "
+                            "agree. Defaults to 0 rather than to randomness, because a "
+                            "tool annotated idempotent that is not is worse than one "
+                            "that admits it."
                         ),
                     },
                 },

@@ -330,3 +330,59 @@ pricing with a discount margin and two durations, and `slippage` gained post-tra
 mark-outs with a benchmark adjustment. Neither fits: each needs a new tool of
 several thousand characters and there are about 4,000 left. The budget is
 deliberately a decision rather than a limit, so it has not been raised here.
+
+## Phase 19 — Dependence that is not elliptical
+
+Six of the seven methods on `portfolio_tail_risk` read a covariance matrix or the
+sample's own joint tail. The first forces the probability of two assets being
+beyond their own quantile together, divided by that quantile, to zero as it falls —
+at any correlation below one under a normal, and to a single number for every pair
+under a multivariate t. The second cannot report a joint event worse than the worst
+one observed. So the question this tool is most often asked had no method that
+could answer it.
+
+- [x] `copula` as a seventh method, in the path-reading set since ranks need the
+      observations and a moments handle does not carry them
+- [x] Family and marginal as arguments, degrees of freedom fitted by default and
+      fixable, with the payload saying which happened
+- [x] The Gaussian-copula figure from the same normal draws beside the fitted one,
+      the tail dependence coefficients worst first, and the likelihood ratio
+- [x] A note that reads as weak evidence when the ratio is weak, and that says to
+      compare the two on expected shortfall rather than on value at risk
+- [x] Over the wire with a good call and three refusals of three different kinds
+- [x] The skill saying when to reach for it, including where the gap is widest
+- [x] Inside the existing listing budget, by extending a tool rather than adding
+
+The listing went from 135,998 to 138,286 characters against 140,000, and
+`portfolio_tail_risk` from 6,065 to 8,353 against a per-tool budget of 12,000. The
+remaining headroom is 1,714 characters, about 1.2%, which is thin enough that the
+next addition to this surface needs the budget decided rather than assumed. Two
+things would free room if that decision is to trim: the four bond schemas are about
+41,000 characters between them, and this method's own five new parameters are about
+2,300.
+
+Two findings from using it, both of which reverse the obvious expectation and both
+of which the tool now states rather than leaving to the reader.
+
+The gap between the fitted copula and the Gaussian one is widest for a book that
+looks *diversified*. Measured in `shortfall` across pairwise taus: +19.7% of
+expected shortfall at 0.05, +12.0% at 0.30, +1.5% at 0.70 and −1.0% at 0.90. Near
+a correlation of one the Gaussian copula already moves everything together, so the
+portfolio behaves as one asset whose marginal tail no copula changes; near zero the
+Gaussian copula promises diversification in the extremes and that is the promise
+that fails.
+
+And the two measures disagree about the sign. At 95% the fitted copula's value at
+risk came in 4.0% *below* the Gaussian copula's while its expected shortfall was
+6.0% above; at 99.9% the two are +29.4% and +35.2%. Tail dependence moves mass
+from the near tail to the far tail and the total is one, so a quantile close to the
+body has less beyond it while the mean of what is beyond is larger. A caller
+reading the 95% value at risk alone would conclude the assumption made the book
+safer, so the note says which figure to compare.
+
+The runtime shape is worth recording because it is lopsided. On 1,200 observations
+of four assets the profile likelihood is about twelve seconds and 20,000 simulated
+paths are under one, so `copulaDegrees` is both the stress-scenario argument and
+the way to make the call fast. One duplicate bound was removed rather than kept:
+the path range lives in the schema alone, whose refusal arrives earlier and names
+the field, the bound and the value given.

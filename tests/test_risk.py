@@ -21,6 +21,7 @@ the caller is told to fix the wrong thing.
 
 from __future__ import annotations
 
+import json
 import math
 import random
 from typing import Any
@@ -1376,3 +1377,212 @@ def test_the_note_says_how_much_of_the_answer_is_extrapolation(
     for payload in (far, near):
         assert "says nothing below" in payload["note"]
         assert "mean excess curve" in payload["note"]
+
+
+# -- the copula method -------------------------------------------------------
+
+
+def tail_dependent(
+    periods: int = 700, *, seed: int = 23, noise: float = 0.0008
+) -> list[list[float]]:
+    """Returns with genuine tail dependence, not merely a heavy marginal tail.
+
+    One Student-t factor on four degrees of freedom shared across the columns, with
+    idiosyncratic noise small enough that the shared chi-square mixing variable —
+    which is the mechanism the copula estimates — survives into the ranks. The
+    marginal tails alone would not distinguish this from independent heavy-tailed
+    columns, and distinguishing the two is the whole point of the method.
+    """
+    rng = random.Random(seed)
+
+    def student_t() -> float:
+        chi_square = 2.0 * rng.gammavariate(2.0, 1.0)
+        return rng.gauss(0.0, 1.0) / math.sqrt(chi_square / 4.0)
+
+    factor = [0.004 * student_t() for _ in range(periods)]
+    return [
+        [factor[t] * (0.7 + 0.15 * a) + rng.gauss(0.0, noise) for a in range(4)]
+        for t in range(periods)
+    ]
+
+
+def copula_call(
+    registry: ToolRegistry,
+    *,
+    returns: list[list[float]] | None = None,
+    **extra: Any,
+) -> dict[str, Any]:
+    return call(
+        registry,
+        "portfolio_tail_risk",
+        {
+            "returns": tail_dependent() if returns is None else returns,
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+            "method": "copula",
+            "paths": 4000,
+            "seed": 1,
+            **extra,
+        },
+    )
+
+
+def test_the_copula_fits_the_dependence_and_says_how_strong_it_is(
+    registry: ToolRegistry,
+) -> None:
+    """The degrees of freedom and the likelihood ratio, not only the figure.
+
+    A tail risk number from a fitted copula without the fit beside it cannot be
+    judged: the degrees of freedom are the entire content of the dependence
+    assumption, and the likelihood ratio is whether the sample supports it. On this
+    construction — a shared Student-t factor on four degrees of freedom — the fit
+    should land near that and the ratio should be decisive.
+    """
+    risk = copula_call(registry)
+    assert risk["method"] == "copula"
+    assert risk["copulaFamily"] == "student-t"
+    assert risk["copulaMarginal"] == "empirical"
+    assert risk["degreesOfFreedomFitted"] is True
+    assert 3.0 < risk["degreesOfFreedom"] < 12.0
+    assert risk["likelihoodRatio"] > 20.0
+    assert risk["expectedShortfall"] >= risk["valueAtRisk"]
+    assert risk["standardError"] > 0.0
+    assert risk["paths"] == 4000
+    assert len(risk["tailDependence"]) == 6
+    assert all(pair["coefficient"] > 0.0 for pair in risk["tailDependence"])
+    # Sorted worst first, so a reader sees the binding pair without scanning.
+    coefficients = [pair["coefficient"] for pair in risk["tailDependence"]]
+    assert coefficients == sorted(coefficients, reverse=True)
+    assert "strong evidence" in risk["note"]
+
+
+def test_the_copula_reports_the_gaussian_figure_beside_its_own(
+    registry: ToolRegistry,
+) -> None:
+    """The comparison is the content of the method, so it travels in the payload.
+
+    Both figures come from the same marginals, the same correlation matrix and the
+    same normal draws, so their difference is the dependence assumption rather
+    than simulation noise. A caller given only the fitted number cannot tell
+    whether the copula changed anything.
+    """
+    risk = copula_call(registry)
+    assert risk["gaussianValueAtRisk"] > 0.0
+    assert risk["gaussianExpectedShortfall"] >= risk["gaussianValueAtRisk"]
+    premium = risk["expectedShortfallVersusGaussianCopula"]
+    assert premium == pytest.approx(
+        risk["expectedShortfall"] / risk["gaussianExpectedShortfall"] - 1.0
+    )
+
+
+def test_a_gaussian_copula_is_its_own_baseline_exactly(
+    registry: ToolRegistry,
+) -> None:
+    # Under the Gaussian family the fitted figure and the comparison figure are the
+    # same computation on the same draws, so they must agree bit for bit; anything
+    # else means the shared-draw pairing is broken. And there is no premium to
+    # report against itself.
+    risk = copula_call(registry, copulaFamily="gaussian")
+    assert risk["degreesOfFreedom"] is None
+    assert risk["valueAtRisk"] == risk["gaussianValueAtRisk"]
+    assert risk["expectedShortfall"] == risk["gaussianExpectedShortfall"]
+    assert "expectedShortfallVersusGaussianCopula" not in risk
+    assert all(pair["coefficient"] == 0.0 for pair in risk["tailDependence"])
+    assert "no tail dependence at any correlation below one" in risk["note"]
+
+
+def test_fixing_the_degrees_of_freedom_says_it_was_not_fitted(
+    registry: ToolRegistry,
+) -> None:
+    # Two reasons a caller fixes it: a stress scenario, and the profile likelihood
+    # being most of the runtime. Either way the payload has to distinguish an
+    # imposed value from an estimated one, or the number reads as evidence.
+    risk = copula_call(registry, copulaDegrees=3.0)
+    assert risk["degreesOfFreedom"] == 3.0
+    assert risk["degreesOfFreedomFitted"] is False
+
+
+def test_spliced_marginals_are_selectable(registry: ToolRegistry) -> None:
+    risk = copula_call(registry, copulaMarginal="extreme-value")
+    assert risk["copulaMarginal"] == "extreme-value"
+    assert risk["expectedShortfall"] > 0.0
+
+
+def test_the_copula_premium_is_larger_for_a_book_that_looks_diversified(
+    registry: ToolRegistry,
+) -> None:
+    """The finding, and the reason the tool description states it.
+
+    The premium over a Gaussian copula is largest where the correlation is
+    *lowest*, which reverses the obvious expectation. Near a correlation of one the
+    Gaussian copula already moves everything together, so the portfolio behaves as
+    a single asset and no copula changes that asset's own marginal tail. The noise
+    term is what sets the correlation here, so raising it is what makes the book
+    look diversified.
+    """
+    concentrated = copula_call(registry, returns=tail_dependent(noise=0.0004))
+    diversified = copula_call(registry, returns=tail_dependent(noise=0.006))
+    assert (
+        diversified["expectedShortfallVersusGaussianCopula"]
+        > concentrated["expectedShortfallVersusGaussianCopula"]
+    )
+    assert max(pair["coefficient"] for pair in diversified["tailDependence"]) < max(
+        pair["coefficient"] for pair in concentrated["tailDependence"]
+    )
+
+
+def test_a_copula_needs_more_than_a_handful_of_observations(
+    registry: ToolRegistry,
+) -> None:
+    error = refuse(
+        registry,
+        "portfolio_tail_risk",
+        {
+            "returns": tail_dependent(periods=150),
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+            "method": "copula",
+        },
+    )
+    message = str(error["message"])
+    assert "at least 200" in message
+    assert "150" in message
+    # And it points somewhere: a refusal a caller cannot act on is a dead end.
+    assert "'historical'" in message or "historical" in message
+
+
+@pytest.mark.parametrize(
+    ("paths", "expected"),
+    [(100, "must be at least 2000"), (500_000, "200000")],
+)
+def test_a_copula_path_count_outside_its_bounds_is_refused(
+    registry: ToolRegistry, paths: int, expected: str
+) -> None:
+    # Caught by the schema rather than by a second copy of the range in the
+    # handler: the schema names the field, the bound and the value given, and one
+    # source of truth for a numeric range cannot drift from another.
+    error = refuse(
+        registry,
+        "portfolio_tail_risk",
+        {
+            "returns": tail_dependent(),
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+            "method": "copula",
+            "paths": paths,
+        },
+    )
+    assert error["kind"] == "invalid_input"
+    assert expected in str(error["message"])
+    assert "paths" in str(error["message"])
+
+
+def test_every_copula_number_survives_a_strict_encoder(
+    registry: ToolRegistry,
+) -> None:
+    # json.dumps writes bare Infinity and NaN, which is not JSON, and json.loads
+    # reads them back without complaint — so only a strict re-encode catches it.
+    assert json.dumps(copula_call(registry), allow_nan=False)
