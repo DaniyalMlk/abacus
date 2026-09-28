@@ -265,4 +265,15 @@ CLAIMS: tuple[Claim, ...] = (
         module="tests/test_risk.py",
         test="test_the_fitted_tail_exceeds_the_historical_one_far_out",
     ),
+    Claim(
+        figure="6.22",
+        about=(
+            "Copula degrees of freedom fitted over the wire to 700 observations of "
+            "a shared Student-t factor built at four, biased high because the "
+            "idiosyncratic noise dilutes the mixing variable the dependence rides "
+            "on."
+        ),
+        module="tests/test_risk_over_the_wire.py",
+        test="test_the_copula_over_the_wire",
+    ),
 )

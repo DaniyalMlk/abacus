@@ -466,7 +466,12 @@ def test_the_copula_over_the_wire(client: Client) -> None:
     )
     assert payload["method"] == "copula"
     assert payload["degreesOfFreedomFitted"] is True
-    assert 3.0 < payload["degreesOfFreedom"] < 12.0
+    # Pinned rather than bounded. The factor is a Student-t on four degrees of
+    # freedom and the fit reads 6.22 — biased high, because the idiosyncratic noise
+    # dilutes the shared mixing variable that carries the dependence, and a rank
+    # estimate of it from 700 observations is not sharp. Bit-identical on 3.10 and
+    # 3.12, so the pin holds a real property of the estimator rather than a float.
+    assert payload["degreesOfFreedom"] == pytest.approx(6.22, abs=5e-3)
     assert payload["likelihoodRatio"] > 20.0
     assert payload["expectedShortfall"] >= payload["valueAtRisk"]
     assert payload["gaussianExpectedShortfall"] > 0.0
