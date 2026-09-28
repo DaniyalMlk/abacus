@@ -93,7 +93,14 @@ handle, and the parametric tools run from it without resending the matrix.
 `portfolio_tail_risk` for value at risk and expected shortfall — and above about
 99.5% on a few years of data, ask for its `extreme-value` method, because every
 other one there is either reading two observations or reporting a shape fitted to
-the body,
+the body. Ask for its `copula` method instead when the question is what the book
+loses if its holdings fall together: every other method there ties the joint
+distribution to a covariance matrix, which under a normal makes that probability
+asymptotically zero at any correlation and under a multivariate t makes it one
+number for every pair. It reports the Gaussian-copula figure beside its own, and
+the gap between them is widest for a book that looks *diversified* — a book
+already correlated at 0.9 gets the same answer either way, because both copulas
+move it together regardless.
 `portfolio_risk_contributions` for where the risk sits, `risk_parity_weights`
 for weights that equalise it, `portfolio_drawdown` for the path statistics. The
 last of those, and the historical tail-risk methods, need the matrix rather than

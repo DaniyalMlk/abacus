@@ -416,3 +416,129 @@ def test_the_risk_tools_answer_a_launched_server_over_stdio() -> None:
         # The server is still serving afterwards, which is what makes the refusal a
         # refusal rather than a crash that happened to be reported.
         assert client.discover().ok
+
+
+def tail_dependent(periods: int = 700, *, seed: int = 23) -> list[list[float]]:
+    """Returns with tail dependence, not merely heavy marginal tails.
+
+    One Student-t factor shared across the columns with small idiosyncratic noise,
+    so the chi-square mixing variable the copula estimates survives into the ranks.
+    Heavy marginals alone would not distinguish this from independent heavy-tailed
+    columns, and that distinction is the method.
+    """
+    rng = random.Random(seed)
+
+    def student_t() -> float:
+        chi_square = 2.0 * rng.gammavariate(2.0, 1.0)
+        return rng.gauss(0.0, 1.0) / math.sqrt(chi_square / 4.0)
+
+    factor = [0.004 * student_t() for _ in range(periods)]
+    return [
+        [factor[t] * (0.7 + 0.15 * a) + rng.gauss(0.0, 0.0008) for a in range(4)]
+        for t in range(periods)
+    ]
+
+
+def test_the_copula_over_the_wire(client: Client) -> None:
+    """The seventh method, with a good call and three bad ones.
+
+    Worth its own wire test for two reasons beyond the usual. The payload carries a
+    list of six nested objects and two fields that are legitimately null under the
+    Gaussian family, so the round trip through the text block is where a
+    serialisation mistake would show. And the refusals are of three different
+    kinds — a sample too short for a rank estimate, a path count outside the
+    schema's range, and a family that does not exist — which should arrive as three
+    distinguishable results a model can act on rather than as one protocol error.
+    """
+    payload = succeed(
+        client,
+        "portfolio_tail_risk",
+        {
+            "returns": tail_dependent(),
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+            "method": "copula",
+            "confidence": 0.99,
+            "paths": 4000,
+            "seed": 1,
+        },
+    )
+    assert payload["method"] == "copula"
+    assert payload["degreesOfFreedomFitted"] is True
+    assert 3.0 < payload["degreesOfFreedom"] < 12.0
+    assert payload["likelihoodRatio"] > 20.0
+    assert payload["expectedShortfall"] >= payload["valueAtRisk"]
+    assert payload["gaussianExpectedShortfall"] > 0.0
+    assert len(payload["tailDependence"]) == 6
+    assert all(
+        -1.0 <= pair["correlation"] <= 1.0 and pair["coefficient"] > 0.0
+        for pair in payload["tailDependence"]
+    )
+    assert payload["standardError"] > 0.0
+    # Nothing here may be a bare Infinity or NaN: json.dumps writes those and
+    # json.loads reads them back, so only a strict re-encode catches it.
+    assert json.dumps(payload, allow_nan=False)
+
+    gaussian = succeed(
+        client,
+        "portfolio_tail_risk",
+        {
+            "returns": tail_dependent(),
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+            "method": "copula",
+            "copulaFamily": "gaussian",
+            "paths": 4000,
+        },
+    )
+    # A null in the payload has to survive as a null rather than as a string or a
+    # dropped key, which is the case a round trip is most likely to lose.
+    assert gaussian["degreesOfFreedom"] is None
+    assert gaussian["valueAtRisk"] == gaussian["gaussianValueAtRisk"]
+    assert json.dumps(gaussian, allow_nan=False)
+
+    short = be_refused(
+        client,
+        "portfolio_tail_risk",
+        {
+            # Legal for every other method on this tool, and too short for a rank
+            # estimate of every pair, which is the distinction this refusal makes.
+            "returns": tail_dependent(periods=150),
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+            "method": "copula",
+        },
+    )
+    assert short["kind"] == "domain"
+    assert "at least 200" in short["message"]
+
+    paths = be_refused(
+        client,
+        "portfolio_tail_risk",
+        {
+            "returns": tail_dependent(),
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+            "method": "copula",
+            "paths": 10,
+        },
+    )
+    assert paths["kind"] == "invalid_input"
+
+    family = be_refused(
+        client,
+        "portfolio_tail_risk",
+        {
+            "returns": tail_dependent(),
+            "assets": ASSETS,
+            "weights": WEIGHTS,
+            "periodsPerYear": PERIODS,
+            "method": "copula",
+            "copulaFamily": "clayton",
+        },
+    )
+    assert family["kind"] == "invalid_input"
