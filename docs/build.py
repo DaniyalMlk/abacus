@@ -21,6 +21,7 @@ that needs a toolchain is a documentation build that stops working.
 from __future__ import annotations
 
 import html
+import json
 import shutil
 import sys
 from dataclasses import dataclass
@@ -30,11 +31,15 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from claims import CLAIMS
-from libraries import LIBRARIES
+from libraries import LIBRARIES, UNEXPOSED
 
 from abacus import __version__
 from abacus.analytics import default_registry
 from abacus.protocol import SUPPORTED_VERSIONS
+
+#: Kept in step with tests/test_skill.py by a test, because they are the same
+#: budget written in two places and nothing else would notice them drifting.
+LISTING_BUDGET = 140_000
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "site"
@@ -598,6 +603,38 @@ def library_table() -> str:
     )
 
 
+def unexposed_table() -> str:
+    """What the libraries do that the tool surface does not offer.
+
+    Generated from the same table the capability list uses, so the modules it
+    names are checked to exist. The budget figures come from the live registry
+    rather than being written down, which is the only way a number in prose
+    about a growing surface stays true.
+    """
+    tools = [tool.describe() for tool in default_registry()]
+    used = len(json.dumps(tools))
+    rows = "\n".join(
+        f"<tr>\n<td class=\"figure\">{html.escape(entry.library)}</td>\n"
+        f"<td>{html.escape(entry.phrase)}</td>\n</tr>"
+        for entry in UNEXPOSED
+    )
+    return (
+        "<h2>In the libraries, not on the server</h2>\n"
+        "<p>The tool surface has a size budget, because every tool's schema is "
+        "in a model's context before it has done anything, and a surface that "
+        f"does not fit is a surface that crowds out the work. It stands at "
+        f"<strong>{len(tools)} tools and {used:,} characters</strong> against a "
+        f"ceiling of {LISTING_BUDGET:,}. The following are built and tested in "
+        "the libraries and have no tool, which is a statement about the budget "
+        "and not about what is worth having:</p>\n"
+        '<div class="scroller"><table class="wide">\n'
+        "<thead><tr><th>Library</th><th>What it does</th></tr></thead>\n"
+        f"<tbody>\n{rows}\n</tbody>\n</table></div>\n"
+        "<p>Importing the library is the answer for any of them today, which is "
+        "what the rest of this page is about.</p>"
+    )
+
+
 def libraries() -> str:
     return """
 <div class="lede">
@@ -620,6 +657,8 @@ collision. The failure mode is quiet &mdash; <code>pip install slippage</code>
 succeeds and hands you somebody else's library &mdash; which is why it is stated
 here rather than left to be discovered.</p>
 </div>
+
+""" + unexposed_table() + """
 
 <h2>When to use the server instead</h2>
 <p>The server earns its place when a language model is the caller. It adds

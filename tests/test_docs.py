@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import html
 import importlib
+import json
 import pkgutil
 import re
 import subprocess
@@ -31,8 +32,9 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "docs"))
 
+from build import LISTING_BUDGET as BUILD_BUDGET  # noqa: E402
 from claims import CLAIMS  # noqa: E402
-from libraries import LIBRARIES  # noqa: E402
+from libraries import LIBRARIES, UNEXPOSED  # noqa: E402
 
 from abacus.analytics import default_registry  # noqa: E402
 
@@ -313,3 +315,73 @@ def test_the_sentence_reads_as_a_sentence() -> None:
         assert sentence.endswith(".")
         assert ", and " in sentence
         assert "  " not in sentence
+
+
+def test_every_unexposed_entry_names_modules_that_exist() -> None:
+    """The gap table cannot describe something that has been removed."""
+    for entry in UNEXPOSED:
+        module = importlib.import_module(entry.library)
+        installed = {
+            name
+            for _, name, _ in pkgutil.iter_modules(module.__path__)
+            if not name.startswith("_")
+        }
+        missing = sorted(set(entry.modules) - installed)
+        assert not missing, f"{entry.library} has no module(s) {missing}"
+
+
+def test_nothing_unexposed_is_actually_exposed() -> None:
+    """The other half: a gap that has since been filled by a tool.
+
+    Matched on the module the entry names rather than on its prose. Every tool
+    in the registry is asked which library modules it reaches, by importing its
+    handler's module and reading what it imported -- crude, and enough to catch
+    the case this is for, which is somebody adding a tool and forgetting the
+    page still calls it missing.
+    """
+    reached: set[tuple[str, str]] = set()
+    for tool in default_registry():
+        handler = sys.modules.get(type(tool).__module__)
+        if handler is None:
+            continue
+        for value in vars(handler).values():
+            name = getattr(value, "__module__", None) or getattr(value, "__name__", None)
+            if not isinstance(name, str) or "." not in name:
+                continue
+            library, _, submodule = name.partition(".")
+            reached.add((library, submodule))
+    for entry in UNEXPOSED:
+        for submodule in entry.modules:
+            assert (entry.library, submodule) not in reached, (
+                f"{entry.library}.{submodule} is listed as unexposed but a tool "
+                "imports it; remove the entry from docs/libraries.py"
+            )
+
+
+def test_the_unexposed_section_reaches_the_page(site: dict[str, str]) -> None:
+    page = html.unescape(site["libraries.html"])
+    assert "In the libraries, not on the server" in page
+    for entry in UNEXPOSED:
+        assert entry.phrase in page
+
+
+def test_the_page_states_the_budget_the_suite_enforces(site: dict[str, str]) -> None:
+    """One budget, written in two files, asserted equal.
+
+    ``tests/test_skill.py`` holds the number the suite enforces and
+    ``docs/build.py`` holds the one the page prints. The first is read out of
+    the source rather than imported: the tests directory is not a package, so
+    importing a sibling test module by name works only when pytest happens to
+    have put it on the path.
+    """
+    source = (ROOT / "tests" / "test_skill.py").read_text()
+    match = re.search(r"^LISTING_BUDGET = ([\d_]+)", source, re.MULTILINE)
+    assert match is not None, "tests/test_skill.py no longer declares LISTING_BUDGET"
+    enforced = int(match.group(1).replace("_", ""))
+
+    assert enforced == BUILD_BUDGET
+    listing = json.dumps([tool.describe() for tool in default_registry()])
+    page = html.unescape(site["libraries.html"])
+    assert f"{len(listing):,} characters" in page
+    assert f"ceiling of {enforced:,}" in page
+    assert f"{len(list(default_registry()))} tools" in page

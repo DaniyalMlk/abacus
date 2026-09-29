@@ -201,3 +201,57 @@ LIBRARIES: tuple[Library, ...] = (
         plumbing=("cli", "exceptions", "io", "series", "synthetic"),
     ),
 )
+
+
+@dataclass(frozen=True)
+class Unexposed:
+    """Something a library does that the server does not offer a tool for.
+
+    Attributes:
+        library: The import name.
+        phrase: What it does, as the page prints it.
+        modules: Where it lives. Checked to exist, so this table cannot
+            describe something that has been removed.
+    """
+
+    library: str
+    phrase: str
+    modules: tuple[str, ...]
+
+
+#: The tool surface has a size budget, and it is nearly spent. Everything here
+#: is built, tested and reachable by importing the library; none of it has a
+#: tool. Listing it is more useful than leaving a reader to discover the gap by
+#: asking the server for something it does not have -- and it is the honest
+#: description of the boundary, which is a budget rather than a judgement about
+#: what matters.
+UNEXPOSED: tuple[Unexposed, ...] = (
+    Unexposed(
+        "moneyness",
+        "Heston stochastic volatility: the transform, the smile it generates, "
+        "and simulation of the variance process",
+        ("heston", "heston_mc"),
+    ),
+    Unexposed(
+        "moneyness",
+        "Asian and barrier payoffs under stochastic volatility",
+        ("heston_mc",),
+    ),
+    Unexposed(
+        "shortfall",
+        "volatility from open, high, low and close, by five range estimators",
+        ("realised",),
+    ),
+    Unexposed("tenor", "floating rate notes and discount margins", ("floating",)),
+    Unexposed(
+        "tenor",
+        "index-linked bonds, real duration and breakeven inflation",
+        ("inflation",),
+    ),
+    Unexposed("slippage", "post-trade mark-outs and reversion decay", ("reversion",)),
+    Unexposed(
+        "slippage",
+        "basket liquidation under a matrix of impact and a matrix of risk",
+        ("basket",),
+    ),
+)
