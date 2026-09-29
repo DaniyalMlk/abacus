@@ -21,6 +21,7 @@ that needs a toolchain is a documentation build that stops working.
 from __future__ import annotations
 
 import html
+import json
 import shutil
 import sys
 from dataclasses import dataclass
@@ -30,10 +31,15 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from claims import CLAIMS
+from libraries import LIBRARIES, UNEXPOSED
 
 from abacus import __version__
 from abacus.analytics import default_registry
 from abacus.protocol import SUPPORTED_VERSIONS
+
+#: Kept in step with tests/test_skill.py by a test, because they are the same
+#: budget written in two places and nothing else would notice them drifting.
+LISTING_BUDGET = 140_000
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "site"
@@ -43,7 +49,7 @@ SOURCE = "https://github.com/DaniyalMlk/abacus"
 #: shell line-continuations are joined here rather than written as a literal
 #: block: this module is Python source, and a backslash before a newline inside
 #: a string literal is a line continuation that silently removes both.
-_LIBRARIES = ("moneyness", "shortfall", "tenor", "slippage", "holdout")
+_LIBRARIES = tuple(library.importable for library in LIBRARIES)
 FROM_SOURCE = " \\\n  ".join(
     ["pip install"] + [f'"git+{SOURCE.rsplit("/", 1)[0]}/{name}.git"' for name in _LIBRARIES]
 ) + f'\npip install "git+{SOURCE}.git"'
@@ -575,6 +581,60 @@ legitimately moves in either direction.</li>
 """
 
 
+def library_table() -> str:
+    """The install/import/description table, assembled from ``docs.libraries``.
+
+    Generated rather than written for the same reason the tool reference is:
+    a hand-written description is a description of the library somebody had in
+    mind. This one is built from a table whose modules the test suite checks
+    against the installed packages, so a library that grows a capability and
+    does not get a phrase for it fails a build.
+    """
+    rows = "\n".join(
+        f"<tr>\n<td class=\"figure\">{html.escape(library.distribution)}</td>\n"
+        f"<td class=\"figure\">{html.escape(library.importable)}</td>\n"
+        f"<td>{html.escape(library.sentence)}</td>\n</tr>"
+        for library in LIBRARIES
+    )
+    return (
+        '<div class="scroller"><table class="wide">\n'
+        "<thead><tr><th>Install</th><th>Import</th><th>What it does</th></tr></thead>\n"
+        f"<tbody>\n{rows}\n</tbody>\n</table></div>"
+    )
+
+
+def unexposed_table() -> str:
+    """What the libraries do that the tool surface does not offer.
+
+    Generated from the same table the capability list uses, so the modules it
+    names are checked to exist. The budget figures come from the live registry
+    rather than being written down, which is the only way a number in prose
+    about a growing surface stays true.
+    """
+    tools = [tool.describe() for tool in default_registry()]
+    used = len(json.dumps(tools))
+    rows = "\n".join(
+        f"<tr>\n<td class=\"figure\">{html.escape(entry.library)}</td>\n"
+        f"<td>{html.escape(entry.phrase)}</td>\n</tr>"
+        for entry in UNEXPOSED
+    )
+    return (
+        "<h2>In the libraries, not on the server</h2>\n"
+        "<p>The tool surface has a size budget, because every tool's schema is "
+        "in a model's context before it has done anything, and a surface that "
+        f"does not fit is a surface that crowds out the work. It stands at "
+        f"<strong>{len(tools)} tools and {used:,} characters</strong> against a "
+        f"ceiling of {LISTING_BUDGET:,}. The following are built and tested in "
+        "the libraries and have no tool, which is a statement about the budget "
+        "and not about what is worth having:</p>\n"
+        '<div class="scroller"><table class="wide">\n'
+        "<thead><tr><th>Library</th><th>What it does</th></tr></thead>\n"
+        f"<tbody>\n{rows}\n</tbody>\n</table></div>\n"
+        "<p>Importing the library is the answer for any of them today, which is "
+        "what the rest of this page is about.</p>"
+    )
+
+
 def libraries() -> str:
     return """
 <div class="lede">
@@ -585,41 +645,7 @@ model, import them directly &mdash; the server adds validation, handles and a
 wire format, and none of that is useful inside a process.</p>
 </div>
 
-<div class="scroller"><table class="wide">
-<thead><tr><th>Install</th><th>Import</th><th>What it does</th></tr></thead>
-<tbody>
-<tr>
-<td class="figure">moneyness</td>
-<td class="figure">moneyness</td>
-<td>Option pricing, the full Greek set, implied volatility, SVI surfaces, local volatility and
-American exercise.</td>
-</tr>
-<tr>
-<td class="figure">shortfall</td>
-<td class="figure">shortfall</td>
-<td>Shrinkage covariance, value at risk and expected shortfall by five methods, risk
-contributions, risk parity and drawdown statistics.</td>
-</tr>
-<tr>
-<td class="figure">tenor</td>
-<td class="figure">tenor</td>
-<td>Day counts, business-day conventions, curve bootstrapping, bond analytics, key rate
-durations and option-adjusted spreads.</td>
-</tr>
-<tr>
-<td class="figure">slippage-tca</td>
-<td class="figure">slippage</td>
-<td>Implementation shortfall, market impact fitting, Almgren-Chriss schedules, constrained
-scheduling and volume curves.</td>
-</tr>
-<tr>
-<td class="figure">holdout-backtest</td>
-<td class="figure">holdout</td>
-<td>Deflated Sharpe ratios, effective trial counts, backtest overfitting probability, purged
-cross-validation and tests for superior predictive ability.</td>
-</tr>
-</tbody>
-</table></div>
+""" + library_table() + """
 
 <div class="note">
 <p><strong>Two of those install under a name that is not the name you
@@ -631,6 +657,8 @@ collision. The failure mode is quiet &mdash; <code>pip install slippage</code>
 succeeds and hands you somebody else's library &mdash; which is why it is stated
 here rather than left to be discovered.</p>
 </div>
+
+""" + unexposed_table() + """
 
 <h2>When to use the server instead</h2>
 <p>The server earns its place when a language model is the caller. It adds
