@@ -18,6 +18,9 @@ one of those tests exists and that the figure is present in its source.
 
 from __future__ import annotations
 
+import html
+import importlib
+import pkgutil
 import re
 import subprocess
 import sys
@@ -29,6 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "docs"))
 
 from claims import CLAIMS  # noqa: E402
+from libraries import LIBRARIES  # noqa: E402
 
 from abacus.analytics import default_registry  # noqa: E402
 
@@ -221,3 +225,91 @@ def test_the_claimed_tests_pass() -> None:
     match = re.search(r"(\d+) passed", completed.stdout)
     assert match is not None, completed.stdout[-2000:]
     assert int(match.group(1)) == len(selection)
+
+
+# -- the libraries page describes the libraries that exist -------------------
+
+
+def test_every_library_module_is_described_or_declared_internal() -> None:
+    """A library that grows a capability fails here until the page gains one.
+
+    This is the check that did not exist while the page went stale twice. It
+    compares the modules actually installed against the ones `docs/libraries.py`
+    accounts for, and a module in neither column is a capability nobody has
+    written a sentence about.
+    """
+    for library in LIBRARIES:
+        module = importlib.import_module(library.importable)
+        installed = {
+            name
+            for _, name, _ in pkgutil.iter_modules(module.__path__)
+            if not name.startswith("_")
+        }
+        accounted = library.described_modules | set(library.plumbing)
+        undescribed = sorted(installed - accounted)
+        assert not undescribed, (
+            f"{library.importable} has module(s) {undescribed} that the libraries "
+            "page neither describes nor declares internal; add a Capability for "
+            "them in docs/libraries.py, or list them as plumbing"
+        )
+
+
+def test_no_described_module_has_gone_away() -> None:
+    """The other direction: a phrase about a module that no longer exists."""
+    for library in LIBRARIES:
+        module = importlib.import_module(library.importable)
+        installed = {
+            name
+            for _, name, _ in pkgutil.iter_modules(module.__path__)
+            if not name.startswith("_")
+        }
+        accounted = library.described_modules | set(library.plumbing)
+        vanished = sorted(accounted - installed)
+        assert not vanished, (
+            f"docs/libraries.py names module(s) {vanished} in {library.importable} "
+            "that are not installed"
+        )
+
+
+def test_every_phrase_reaches_the_page(site: dict[str, str]) -> None:
+    page = html.unescape(site["libraries.html"])
+    for library in LIBRARIES:
+        for capability in library.capabilities:
+            assert capability.phrase in page, (
+                f"{library.importable}: the page does not carry the phrase "
+                f"{capability.phrase!r}"
+            )
+
+
+def test_both_names_reach_the_page(site: dict[str, str]) -> None:
+    page = site["libraries.html"]
+    for library in LIBRARIES:
+        assert f">{library.distribution}<" in page
+        assert f">{library.importable}<" in page
+
+
+def test_the_install_names_match_the_packaging() -> None:
+    """The page's install names are the requirements the server declares."""
+    text = (ROOT / "pyproject.toml").read_text()
+    for library in LIBRARIES:
+        assert f'"{library.distribution}' in text, (
+            f"{library.distribution} is on the libraries page but is not a "
+            "declared dependency of the server"
+        )
+
+
+def test_a_capability_names_at_least_one_module() -> None:
+    for library in LIBRARIES:
+        assert library.capabilities
+        for capability in library.capabilities:
+            assert capability.modules
+            assert capability.phrase.strip() == capability.phrase
+            assert not capability.phrase.endswith(".")
+
+
+def test_the_sentence_reads_as_a_sentence() -> None:
+    for library in LIBRARIES:
+        sentence = library.sentence
+        assert sentence.endswith(".")
+        assert ", and " in sentence
+        assert "  " not in sentence

@@ -30,6 +30,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from claims import CLAIMS
+from libraries import LIBRARIES
 
 from abacus import __version__
 from abacus.analytics import default_registry
@@ -43,7 +44,7 @@ SOURCE = "https://github.com/DaniyalMlk/abacus"
 #: shell line-continuations are joined here rather than written as a literal
 #: block: this module is Python source, and a backslash before a newline inside
 #: a string literal is a line continuation that silently removes both.
-_LIBRARIES = ("moneyness", "shortfall", "tenor", "slippage", "holdout")
+_LIBRARIES = tuple(library.importable for library in LIBRARIES)
 FROM_SOURCE = " \\\n  ".join(
     ["pip install"] + [f'"git+{SOURCE.rsplit("/", 1)[0]}/{name}.git"' for name in _LIBRARIES]
 ) + f'\npip install "git+{SOURCE}.git"'
@@ -575,6 +576,28 @@ legitimately moves in either direction.</li>
 """
 
 
+def library_table() -> str:
+    """The install/import/description table, assembled from ``docs.libraries``.
+
+    Generated rather than written for the same reason the tool reference is:
+    a hand-written description is a description of the library somebody had in
+    mind. This one is built from a table whose modules the test suite checks
+    against the installed packages, so a library that grows a capability and
+    does not get a phrase for it fails a build.
+    """
+    rows = "\n".join(
+        f"<tr>\n<td class=\"figure\">{html.escape(library.distribution)}</td>\n"
+        f"<td class=\"figure\">{html.escape(library.importable)}</td>\n"
+        f"<td>{html.escape(library.sentence)}</td>\n</tr>"
+        for library in LIBRARIES
+    )
+    return (
+        '<div class="scroller"><table class="wide">\n'
+        "<thead><tr><th>Install</th><th>Import</th><th>What it does</th></tr></thead>\n"
+        f"<tbody>\n{rows}\n</tbody>\n</table></div>"
+    )
+
+
 def libraries() -> str:
     return """
 <div class="lede">
@@ -585,41 +608,7 @@ model, import them directly &mdash; the server adds validation, handles and a
 wire format, and none of that is useful inside a process.</p>
 </div>
 
-<div class="scroller"><table class="wide">
-<thead><tr><th>Install</th><th>Import</th><th>What it does</th></tr></thead>
-<tbody>
-<tr>
-<td class="figure">moneyness</td>
-<td class="figure">moneyness</td>
-<td>Option pricing, the full Greek set, implied volatility, SVI surfaces, local volatility and
-American exercise.</td>
-</tr>
-<tr>
-<td class="figure">shortfall</td>
-<td class="figure">shortfall</td>
-<td>Shrinkage covariance, value at risk and expected shortfall by five methods, risk
-contributions, risk parity and drawdown statistics.</td>
-</tr>
-<tr>
-<td class="figure">tenor</td>
-<td class="figure">tenor</td>
-<td>Day counts, business-day conventions, curve bootstrapping, bond analytics, key rate
-durations and option-adjusted spreads.</td>
-</tr>
-<tr>
-<td class="figure">slippage-tca</td>
-<td class="figure">slippage</td>
-<td>Implementation shortfall, market impact fitting, Almgren-Chriss schedules, constrained
-scheduling and volume curves.</td>
-</tr>
-<tr>
-<td class="figure">holdout-backtest</td>
-<td class="figure">holdout</td>
-<td>Deflated Sharpe ratios, effective trial counts, backtest overfitting probability, purged
-cross-validation and tests for superior predictive ability.</td>
-</tr>
-</tbody>
-</table></div>
+""" + library_table() + """
 
 <div class="note">
 <p><strong>Two of those install under a name that is not the name you
