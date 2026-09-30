@@ -159,6 +159,10 @@ LIBRARIES: tuple[Library, ...] = (
                 "survival curves, credit default swaps and risky bonds",
                 ("credit",),
             ),
+            Capability(
+                "deliverable bond futures, conversion factors and the basis",
+                ("futures",),
+            ),
         ),
         plumbing=("cli",),
     ),
@@ -177,6 +181,10 @@ LIBRARIES: tuple[Library, ...] = (
             Capability(
                 "Almgren-Chriss schedules, constrained and for a whole basket",
                 ("scheduling", "execution", "basket"),
+            ),
+            Capability(
+                "transient impact under a decay kernel, and the schedule it implies",
+                ("transient",),
             ),
             Capability("volume curves and participation", ("volume",)),
             Capability("a simulator to score a schedule against", ("simulate", "synthetic")),
@@ -200,6 +208,10 @@ LIBRARIES: tuple[Library, ...] = (
             Capability(
                 "multiplicity haircuts and a robust Sharpe-difference test",
                 ("multiple", "pairwise"),
+            ),
+            Capability(
+                "a test for a break in the Sharpe ratio at a date the data chose",
+                ("stability",),
             ),
         ),
         plumbing=("cli", "exceptions", "io", "series", "synthetic"),
@@ -258,7 +270,25 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "risky bond pricing and the credit triangle's measured error",
         ("credit",),
     ),
+    Unexposed(
+        "tenor",
+        "deliverable bond futures: conversion factors, the basis and the "
+        "cheapest bond to deliver",
+        ("futures",),
+    ),
     Unexposed("slippage", "post-trade mark-outs and reversion decay", ("reversion",)),
+    Unexposed(
+        "slippage",
+        "impact that decays at a rate rather than instantly, and the "
+        "block-rate-block schedule that minimises its cost",
+        ("transient",),
+    ),
+    Unexposed(
+        "holdout",
+        "a bootstrap test for a break in the Sharpe ratio at a date chosen by "
+        "the data, and how little power it has",
+        ("stability",),
+    ),
     Unexposed(
         "slippage",
         "basket liquidation under a matrix of impact and a matrix of risk",
