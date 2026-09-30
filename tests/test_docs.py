@@ -273,6 +273,39 @@ def test_no_described_module_has_gone_away() -> None:
         )
 
 
+def test_no_module_is_both_described_and_declared_internal() -> None:
+    """A module belongs to one column or the other, never both.
+
+    The two checks above compare the union of the columns against what is
+    installed, so a module listed twice passes both of them while the table it
+    is read out of says two contradictory things about it. It matters in one
+    direction in particular: adding a module to the plumbing tuple to get a
+    failing build green, when a capability already names it, leaves the page
+    describing something the table also calls internal, and no other assertion
+    here would notice.
+    """
+    for library in LIBRARIES:
+        both = sorted(library.described_modules & frozenset(library.plumbing))
+        assert not both, (
+            f"{library.importable}: module(s) {both} are named by a capability and "
+            "also declared plumbing; a module is one or the other"
+        )
+
+
+def test_no_module_is_described_twice() -> None:
+    """Two phrases about one module means the page says it twice."""
+    for library in LIBRARIES:
+        seen: dict[str, str] = {}
+        for capability in library.capabilities:
+            for module in capability.modules:
+                assert module not in seen, (
+                    f"{library.importable}.{module} is named by both "
+                    f"{seen[module]!r} and {capability.phrase!r}"
+                )
+                seen[module] = capability.phrase
+        assert len(library.plumbing) == len(set(library.plumbing))
+
+
 def test_every_phrase_reaches_the_page(site: dict[str, str]) -> None:
     page = html.unescape(site["libraries.html"])
     for library in LIBRARIES:
