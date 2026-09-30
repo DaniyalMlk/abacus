@@ -155,6 +155,10 @@ LIBRARIES: tuple[Library, ...] = (
             ),
             Capability("floating rate notes and index-linked bonds", ("floating", "inflation")),
             Capability("forward curves, carry and roll-down", ("horizon",)),
+            Capability(
+                "survival curves, credit default swaps and risky bonds",
+                ("credit",),
+            ),
         ),
         plumbing=("cli",),
     ),
