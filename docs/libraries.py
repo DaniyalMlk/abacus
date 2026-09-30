@@ -155,6 +155,10 @@ LIBRARIES: tuple[Library, ...] = (
             ),
             Capability("floating rate notes and index-linked bonds", ("floating", "inflation")),
             Capability("forward curves, carry and roll-down", ("horizon",)),
+            Capability(
+                "survival curves, credit default swaps and risky bonds",
+                ("credit",),
+            ),
         ),
         plumbing=("cli",),
     ),
@@ -247,6 +251,12 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "tenor",
         "index-linked bonds, real duration and breakeven inflation",
         ("inflation",),
+    ),
+    Unexposed(
+        "tenor",
+        "survival curves bootstrapped from par credit default swap spreads, "
+        "risky bond pricing and the credit triangle's measured error",
+        ("credit",),
     ),
     Unexposed("slippage", "post-trade mark-outs and reversion decay", ("reversion",)),
     Unexposed(
