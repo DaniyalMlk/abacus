@@ -252,6 +252,12 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "index-linked bonds, real duration and breakeven inflation",
         ("inflation",),
     ),
+    Unexposed(
+        "tenor",
+        "survival curves bootstrapped from par credit default swap spreads, "
+        "risky bond pricing and the credit triangle's measured error",
+        ("credit",),
+    ),
     Unexposed("slippage", "post-trade mark-outs and reversion decay", ("reversion",)),
     Unexposed(
         "slippage",
