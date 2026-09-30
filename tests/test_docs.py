@@ -239,6 +239,14 @@ def test_every_library_module_is_described_or_declared_internal() -> None:
     compares the modules actually installed against the ones `docs/libraries.py`
     accounts for, and a module in neither column is a capability nobody has
     written a sentence about.
+
+    The failure quotes the new module's own summary line, because of *where* this
+    failure lands. The dependency wheelhouse builds each library from its default
+    branch at job time, so a library merging a module turns this red on the next
+    push to this repository, against a commit that has nothing to do with it.
+    Whoever reads that has to go and find out what `tenor.futures` is before they
+    can write a phrase for it. The module already says, in one line, and putting
+    it in the message turns a research task into an editing one.
     """
     for library in LIBRARIES:
         module = importlib.import_module(library.importable)
@@ -249,11 +257,32 @@ def test_every_library_module_is_described_or_declared_internal() -> None:
         }
         accounted = library.described_modules | set(library.plumbing)
         undescribed = sorted(installed - accounted)
+        summaries = "; ".join(
+            f"{name}: {_summary_line(library.importable, name)}" for name in undescribed
+        )
         assert not undescribed, (
             f"{library.importable} has module(s) {undescribed} that the libraries "
             "page neither describes nor declares internal; add a Capability for "
-            "them in docs/libraries.py, or list them as plumbing"
+            f"them in docs/libraries.py, or list them as plumbing. They say of "
+            f"themselves -- {summaries}"
         )
+
+
+def _summary_line(library: str, module: str) -> str:
+    """The first line of a module's docstring, or a note that it has none.
+
+    Imports the module rather than reading the file: the installed library may be
+    a wheel in a temporary directory, and its source path is not something this
+    should have an opinion about.
+    """
+    try:
+        imported = importlib.import_module(f"{library}.{module}")
+    except Exception as failed:  # pragma: no cover - reached only by a broken library
+        return f"it does not import ({failed})"
+    text = (imported.__doc__ or "").strip()
+    if not text:
+        return "nothing; it has no docstring"
+    return text.splitlines()[0]
 
 
 def test_no_described_module_has_gone_away() -> None:
