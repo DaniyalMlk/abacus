@@ -209,6 +209,10 @@ LIBRARIES: tuple[Library, ...] = (
                 "multiplicity haircuts and a robust Sharpe-difference test",
                 ("multiple", "pairwise"),
             ),
+            Capability(
+                "a test for a break in the Sharpe ratio at a date the data chose",
+                ("stability",),
+            ),
         ),
         plumbing=("cli", "exceptions", "io", "series", "synthetic"),
     ),
@@ -278,6 +282,12 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "impact that decays at a rate rather than instantly, and the "
         "block-rate-block schedule that minimises its cost",
         ("transient",),
+    ),
+    Unexposed(
+        "holdout",
+        "a bootstrap test for a break in the Sharpe ratio at a date chosen by "
+        "the data, and how little power it has",
+        ("stability",),
     ),
     Unexposed(
         "slippage",
