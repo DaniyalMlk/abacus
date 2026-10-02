@@ -102,6 +102,11 @@ LIBRARIES: tuple[Library, ...] = (
                 "quadratic-exponential scheme for the variance process",
                 ("monte_carlo", "heston_mc", "optimise"),
             ),
+            Capability(
+                "SABR smiles in both volatility conventions, with a Bachelier "
+                "model and the density the smile implies",
+                ("sabr",),
+            ),
         ),
         plumbing=("cli",),
     ),
@@ -163,6 +168,10 @@ LIBRARIES: tuple[Library, ...] = (
                 "deliverable bond futures, conversion factors and the basis",
                 ("futures",),
             ),
+            Capability(
+                "forecasting and discounting on separate curves, with tenor basis",
+                ("multicurve",),
+            ),
         ),
         plumbing=("cli",),
     ),
@@ -188,6 +197,10 @@ LIBRARIES: tuple[Library, ...] = (
             ),
             Capability("volume curves and participation", ("volume",)),
             Capability("a simulator to score a schedule against", ("simulate", "synthetic")),
+            Capability(
+                "schedules that react to the liquidity regime they find",
+                ("adaptive",),
+            ),
         ),
         plumbing=("cli", "exceptions", "io", "series", "types"),
     ),
@@ -293,5 +306,23 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "slippage",
         "basket liquidation under a matrix of impact and a matrix of risk",
         ("basket",),
+    ),
+    Unexposed(
+        "tenor",
+        "a projection curve solved against a discount curve, tenor basis swaps, "
+        "and how little the discount curve moves a par swap rate",
+        ("multicurve",),
+    ),
+    Unexposed(
+        "slippage",
+        "the optimal schedule when liquidity switches regime, and what reacting "
+        "to it is worth against the best schedule fixed in advance",
+        ("adaptive",),
+    ),
+    Unexposed(
+        "moneyness",
+        "SABR in both volatility conventions, a Bachelier model, and where a "
+        "long-dated smile stops being a distribution",
+        ("sabr",),
     ),
 )
