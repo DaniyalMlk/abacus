@@ -172,6 +172,10 @@ LIBRARIES: tuple[Library, ...] = (
                 "forecasting and discounting on separate curves, with tenor basis",
                 ("multicurve",),
             ),
+            Capability(
+                "swaptions on the annuity measure, caps and floors",
+                ("options",),
+            ),
         ),
         plumbing=("cli",),
     ),
@@ -324,5 +328,12 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "SABR in both volatility conventions, a Bachelier model, and where a "
         "long-dated smile stops being a distribution",
         ("sabr",),
+    ),
+    Unexposed(
+        "tenor",
+        "swaptions on the annuity measure, caps and floors as strips, and the "
+        "hundredfold gap between what the discount curve is worth to an option "
+        "and to the rate underneath it",
+        ("options",),
     ),
 )
