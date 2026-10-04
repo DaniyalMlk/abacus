@@ -613,10 +613,15 @@ def unexposed_table() -> str:
     """
     tools = [tool.describe() for tool in default_registry()]
     used = len(json.dumps(tools))
+    # Grouped by library for the reader, who is asking "what does moneyness
+    # have that the server does not", and never "what landed in which order".
+    # The table itself keeps its chronology, which is the useful order in the
+    # source and the useless one on the page.
+    grouped = sorted(UNEXPOSED, key=lambda entry: (entry.library, entry.phrase))
     rows = "\n".join(
         f"<tr>\n<td class=\"figure\">{html.escape(entry.library)}</td>\n"
         f"<td>{html.escape(entry.phrase)}</td>\n</tr>"
-        for entry in UNEXPOSED
+        for entry in grouped
     )
     return (
         "<h2>In the libraries, not on the server</h2>\n"
