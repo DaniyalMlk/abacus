@@ -427,6 +427,23 @@ def test_the_unexposed_section_reaches_the_page(site: dict[str, str]) -> None:
         assert entry.phrase in page
 
 
+def test_the_unexposed_rows_are_grouped_by_library(site: dict[str, str]) -> None:
+    """Read as a list of gaps per library, not as a history of what landed when.
+
+    The table in the source is in the order things were built, which is the
+    useful order there and the wrong one on a page somebody is scanning for
+    one library. Checked on where each phrase lands in the rendered page, so
+    this is about the output rather than about the sort key.
+    """
+    page = html.unescape(site["libraries.html"])
+    positions = [(page.index(entry.phrase), entry.library) for entry in UNEXPOSED]
+    libraries = [library for _, library in sorted(positions)]
+    assert libraries == sorted(libraries)
+    # And the source is deliberately not sorted, which is what makes the
+    # grouping the renderer's job rather than a coincidence.
+    assert [entry.library for entry in UNEXPOSED] != libraries
+
+
 def test_the_page_states_the_budget_the_suite_enforces(site: dict[str, str]) -> None:
     """One budget, written in two files, asserted equal.
 
