@@ -107,6 +107,11 @@ LIBRARIES: tuple[Library, ...] = (
                 "model and the density the smile implies",
                 ("sabr",),
             ),
+            Capability(
+                "variance and volatility swap strikes replicated out of the "
+                "quoted smile, with no model in the replication at all",
+                ("variance",),
+            ),
         ),
         plumbing=("cli",),
     ),
@@ -176,6 +181,11 @@ LIBRARIES: tuple[Library, ...] = (
                 "swaptions on the annuity measure, caps and floors",
                 ("options",),
             ),
+            Capability(
+                "a Gaussian short rate model fitted to the curve, with bond and "
+                "swaption prices in closed form",
+                ("hullwhite",),
+            ),
         ),
         plumbing=("cli",),
     ),
@@ -204,6 +214,11 @@ LIBRARIES: tuple[Library, ...] = (
             Capability(
                 "schedules that react to the liquidity regime they find",
                 ("adaptive",),
+            ),
+            Capability(
+                "resting a limit order against crossing the spread: the fill "
+                "probability, the adverse selection and the cost of each",
+                ("placement",),
             ),
         ),
         plumbing=("cli", "exceptions", "io", "series", "types"),
@@ -335,5 +350,25 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "hundredfold gap between what the discount curve is worth to an option "
         "and to the rate underneath it",
         ("options",),
+    ),
+    Unexposed(
+        "moneyness",
+        "variance and volatility swaps replicated from the quoted smile, and how "
+        "much further out the strikes have to reach than a Gaussian rule of thumb "
+        "would suggest",
+        ("variance",),
+    ),
+    Unexposed(
+        "tenor",
+        "Hull-White's one factor, with Jamshidian's decomposition for swaptions "
+        "and the measured fact that one quote cannot separate mean reversion from "
+        "volatility",
+        ("hullwhite",),
+    ),
+    Unexposed(
+        "slippage",
+        "whether to rest a limit order or cross the spread, and why the placement "
+        "distance turns out not to be a choice",
+        ("placement",),
     ),
 )
