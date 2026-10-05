@@ -200,6 +200,11 @@ LIBRARIES: tuple[Library, ...] = (
                 "swaption prices in closed form",
                 ("hullwhite",),
             ),
+            Capability(
+                "a second factor, so that two rates are no longer forced to move "
+                "together",
+                ("g2",),
+            ),
         ),
         plumbing=("cli",),
     ),
@@ -414,5 +419,11 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "sample weights for overlapping labels, and the arithmetic cap that leaves "
         "a sequential bootstrap nothing to recover at full size",
         ("uniqueness",),
+    ),
+    Unexposed(
+        "tenor",
+        "a two-factor Gaussian model, the decorrelation one factor cannot produce, "
+        "and the measured fact that a cap carries no information about it",
+        ("g2",),
     ),
 )
