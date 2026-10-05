@@ -89,6 +89,11 @@ LIBRARIES: tuple[Library, ...] = (
             Capability("implied volatility", ("implied",)),
             Capability("SVI surfaces and Dupire local volatility", ("svi", "surface")),
             Capability(
+                "pricing on a finite-difference grid under that local volatility, "
+                "European and American",
+                ("pde",),
+            ),
+            Capability(
                 "American exercise on lattices and in closed form",
                 ("lattice", "american"),
             ),
@@ -142,6 +147,15 @@ LIBRARIES: tuple[Library, ...] = (
             Capability(
                 "volatility from the whole bar by five range estimators",
                 ("realised",),
+            ),
+            Capability(
+                "strictly consistent scores for ranking two adequate risk models",
+                ("scoring",),
+            ),
+            Capability(
+                "expectiles, the only risk measure that is coherent and elicitable "
+                "at once",
+                ("expectile",),
             ),
         ),
         plumbing=("cli", "series"),
@@ -244,6 +258,11 @@ LIBRARIES: tuple[Library, ...] = (
             Capability(
                 "a test for a break in the Sharpe ratio at a date the data chose",
                 ("stability",),
+            ),
+            Capability(
+                "sample weights for overlapping labels, and the effective sample "
+                "size they imply",
+                ("uniqueness",),
             ),
         ),
         plumbing=("cli", "exceptions", "io", "series", "synthetic"),
@@ -370,5 +389,30 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "whether to rest a limit order or cross the spread, and why the placement "
         "distance turns out not to be a choice",
         ("placement",),
+    ),
+    Unexposed(
+        "moneyness",
+        "a finite-difference solver that prices under the Dupire local volatility "
+        "rather than only computing it, and the coordinate mistake no derivative "
+        "test can catch",
+        ("pde",),
+    ),
+    Unexposed(
+        "shortfall",
+        "scoring functions that rank two adequate models, and the measured failure "
+        "of the one anybody builds first",
+        ("scoring",),
+    ),
+    Unexposed(
+        "shortfall",
+        "expectiles, coherent and elicitable at once, and the measured reason a "
+        "single level cannot stand in for a confidence level",
+        ("expectile",),
+    ),
+    Unexposed(
+        "holdout",
+        "sample weights for overlapping labels, and the arithmetic cap that leaves "
+        "a sequential bootstrap nothing to recover at full size",
+        ("uniqueness",),
     ),
 )
