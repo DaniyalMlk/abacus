@@ -34,7 +34,11 @@ from abacus.client import Client, InProcessTransport
 SKILL = Path(__file__).resolve().parent.parent / "skill" / "SKILL.md"
 
 #: Ceiling on the whole tool listing, serialised as JSON, in characters.
-#: Measured at 115,162 when this was written, so the headroom is about a fifth.
+#: Measured at 115,162 when this was written, when the headroom was about a
+#: fifth. It is 138,286 now -- 98.8% of the budget, 1,714 characters left --
+#: which is not room for another tool of any size. Trimming the four bond
+#: groups, about 41,000 characters between them, or raising the ceiling, are
+#: both decisions rather than maintenance, so neither is taken here.
 #: The number is a budget rather than a limit of the protocol: `tools/list`
 #: paginates, and nothing breaks above it. What it buys is that adding a group
 #: which pushes the surface past it is a decision somebody makes rather than a

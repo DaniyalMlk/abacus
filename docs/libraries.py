@@ -90,8 +90,13 @@ LIBRARIES: tuple[Library, ...] = (
             Capability("SVI surfaces and Dupire local volatility", ("svi", "surface")),
             Capability(
                 "pricing on a finite-difference grid under that local volatility, "
-                "European and American",
+                "European, American and knocked out at a barrier",
                 ("pde",),
+            ),
+            Capability(
+                "single-barrier options in closed form, agreeing with the grid and "
+                "the simulation to the accuracy each of those supports",
+                ("barrier",),
             ),
             Capability(
                 "American exercise on lattices and in closed form",
@@ -131,6 +136,11 @@ LIBRARIES: tuple[Library, ...] = (
             Capability(
                 "value at risk and expected shortfall by five methods",
                 ("parametric", "historical", "distributions"),
+            ),
+            Capability(
+                "spectral risk measures, where coherence is a property of the "
+                "weight function rather than of the construction",
+                ("spectral",),
             ),
             Capability(
                 "risk contributions, risk parity and drawdown statistics",
@@ -194,6 +204,12 @@ LIBRARIES: tuple[Library, ...] = (
             Capability(
                 "swaptions on the annuity measure, caps and floors",
                 ("options",),
+            ),
+            Capability(
+                "constant maturity swaps, replicated out of those same swaptions "
+                "because the rate is paid outside the measure it is a martingale "
+                "under",
+                ("cms",),
             ),
             Capability(
                 "a Gaussian short rate model fitted to the curve, with bond and "
@@ -425,5 +441,23 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "a two-factor Gaussian model, the decorrelation one factor cannot produce, "
         "and the measured fact that a cap carries no information about it",
         ("g2",),
+    ),
+    Unexposed(
+        "moneyness",
+        "single-barrier options in closed form, and the measured fact that a "
+        "knock-out is the one price in the library that falls as volatility rises",
+        ("barrier",),
+    ),
+    Unexposed(
+        "tenor",
+        "constant maturity swaps by static replication, and the measured sign "
+        "change the payment date produces in the convexity adjustment",
+        ("cms",),
+    ),
+    Unexposed(
+        "shortfall",
+        "spectral risk measures, and the measured factor of two between two "
+        "spectra that agree on the headline charge",
+        ("spectral",),
     ),
 )
