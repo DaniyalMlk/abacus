@@ -485,10 +485,19 @@ rather than as an example somebody copies and cannot make work.
 
 The same file checks that every tool the skill names is registered and every
 registered tool is named — a rename breaks the first, a new phase breaks the
-second — and enforces a budget on the tool listing, which is 115,162 characters
-today against a ceiling of 140,000, with no single tool over 12,000. The listing
-is loaded before any work happens and grows with every group added, so the
-ceiling exists to make crossing it a decision rather than a drift.
+second — and enforces a budget on the tool listing, which is **138,286 characters today
+against a ceiling of 140,000** — 98.8% of it, with 1,714 left — and no single
+tool over 12,000. The listing is loaded before any work happens and grows with
+every group added, so the ceiling exists to make crossing it a decision rather
+than a drift.
+
+That decision is now due. The budget was 115,162 when the test was written and
+the headroom was about a fifth; it is 1.2% now, which is not enough for another
+tool of any size. The four bond groups are about 41,000 characters between them,
+so the room exists if the schemas are trimmed; raising the ceiling is the other
+option. Until one or the other happens, the libraries page below keeps growing
+instead — twenty-six capabilities that are built, tested and reachable by
+importing the library, with no tool in front of them.
 
 ## The documentation site
 
