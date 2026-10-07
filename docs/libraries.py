@@ -122,6 +122,11 @@ LIBRARIES: tuple[Library, ...] = (
                 "quoted smile, with no model in the replication at all",
                 ("variance",),
             ),
+            Capability(
+                "average-price options, whose price can only be bracketed between "
+                "bounds that hold as inequalities",
+                ("asian",),
+            ),
         ),
         plumbing=("cli",),
     ),
@@ -221,6 +226,11 @@ LIBRARIES: tuple[Library, ...] = (
                 "together",
                 ("g2",),
             ),
+            Capability(
+                "Bermudan swaptions, where several exercise dates leave no formula "
+                "for any of them",
+                ("bermudan",),
+            ),
         ),
         plumbing=("cli",),
     ),
@@ -254,6 +264,11 @@ LIBRARIES: tuple[Library, ...] = (
                 "resting a limit order against crossing the spread: the fill "
                 "probability, the adverse selection and the cost of each",
                 ("placement",),
+            ),
+            Capability(
+                "tracking a volume-weighted benchmark, which moves with the market "
+                "and so inverts what risk aversion does",
+                ("tracking",),
             ),
         ),
         plumbing=("cli", "exceptions", "io", "series", "types"),
@@ -459,5 +474,24 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "spectral risk measures, and the measured factor of two between two "
         "spectra that agree on the headline charge",
         ("spectral",),
+    ),
+    Unexposed(
+        "tenor",
+        "Bermudan swaptions by backward induction on a curve-fitted tree, with "
+        "the switch value over the best single date the extra rights actually buy",
+        ("bermudan",),
+    ),
+    Unexposed(
+        "moneyness",
+        "arithmetic-average options bracketed rather than priced, where the "
+        "moment-matched price every system quotes falls below a rigorous lower "
+        "bound out of the money",
+        ("asian",),
+    ),
+    Unexposed(
+        "slippage",
+        "tracking error against a volume-weighted benchmark, which moves with the "
+        "market, and the floor volume uncertainty sets underneath it",
+        ("tracking",),
     ),
 )

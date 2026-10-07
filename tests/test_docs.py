@@ -444,6 +444,47 @@ def test_the_unexposed_rows_are_grouped_by_library(site: dict[str, str]) -> None
     assert [entry.library for entry in UNEXPOSED] != libraries
 
 
+def test_the_readme_counts_the_unexposed_capabilities_correctly() -> None:
+    """The one number about this table that nothing was checking.
+
+    The README says how many capabilities sit in the libraries with no tool in
+    front of them, written out in words. That sentence is the argument for raising
+    the listing budget, so a stale count is an argument from a number that is no
+    longer true — which is the exact failure the rest of this file exists to
+    prevent, left in the one place prose was still unchecked.
+
+    Spelled out rather than numeric because that is how the sentence reads, so the
+    words are what gets asserted.
+    """
+    words = {
+        20: "twenty",
+        30: "thirty",
+        40: "forty",
+        50: "fifty",
+    }
+    units = [
+        "",
+        "-one",
+        "-two",
+        "-three",
+        "-four",
+        "-five",
+        "-six",
+        "-seven",
+        "-eight",
+        "-nine",
+    ]
+    count = len(UNEXPOSED)
+    tens = count - count % 10
+    assert tens in words, f"the spelling table does not reach {count}"
+    spelled = words[tens] + units[count % 10]
+    readme = (ROOT / "README.md").read_text()
+    assert f"{spelled} capabilities that are built" in readme, (
+        f"the README does not say there are {spelled} ({count}) unexposed "
+        "capabilities; update the sentence in README.md that argues for the budget"
+    )
+
+
 def test_the_page_states_the_budget_the_suite_enforces(site: dict[str, str]) -> None:
     """One budget, written in two files, asserted equal.
 
