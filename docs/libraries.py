@@ -127,6 +127,12 @@ LIBRARIES: tuple[Library, ...] = (
                 "bounds that hold as inequalities",
                 ("asian",),
             ),
+            Capability(
+                "options on the difference of two correlated assets, with an upper "
+                "bound that carries no correlation at all because it is the price "
+                "under the worst one",
+                ("spread",),
+            ),
         ),
         plumbing=("cli",),
     ),
@@ -146,6 +152,12 @@ LIBRARIES: tuple[Library, ...] = (
                 "spectral risk measures, where coherence is a property of the "
                 "weight function rather than of the construction",
                 ("spectral",),
+            ),
+            Capability(
+                "the loss tail of a portfolio of obligors from its cumulant "
+                "generating function, expanded where the question is rather than "
+                "at the centre of the distribution",
+                ("saddlepoint",),
             ),
             Capability(
                 "risk contributions, risk parity and drawdown statistics",
@@ -211,6 +223,11 @@ LIBRARIES: tuple[Library, ...] = (
                 ("options",),
             ),
             Capability(
+                "caplet volatilities bootstrapped out of flat cap quotes, with how "
+                "sharply each one is pinned reported beside it",
+                ("stripping",),
+            ),
+            Capability(
                 "constant maturity swaps, replicated out of those same swaptions "
                 "because the rate is paid outside the measure it is a martingale "
                 "under",
@@ -269,6 +286,11 @@ LIBRARIES: tuple[Library, ...] = (
                 "tracking a volume-weighted benchmark, which moves with the market "
                 "and so inverts what risk aversion does",
                 ("tracking",),
+            ),
+            Capability(
+                "a schedule that can hold a view, where the smoothing a price "
+                "forecast receives is the urgency the problem already had",
+                ("alpha",),
             ),
         ),
         plumbing=("cli", "exceptions", "io", "series", "types"),
@@ -493,5 +515,33 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "tracking error against a volume-weighted benchmark, which moves with the "
         "market, and the floor volume uncertainty sets underneath it",
         ("tracking",),
+    ),
+    Unexposed(
+        "moneyness",
+        "options on the difference of two correlated assets, and the measured fact "
+        "that the approximation desks quote leaves a rigorous no-arbitrage bracket "
+        "at eighteen of eighty-four strikes and correlations",
+        ("spread",),
+    ),
+    Unexposed(
+        "tenor",
+        "caplet volatilities bootstrapped out of flat cap quotes, and the strike "
+        "below which a quote identifies no volatility at all because the premium "
+        "and the intrinsic value are the same double",
+        ("stripping",),
+    ),
+    Unexposed(
+        "shortfall",
+        "a portfolio loss tail from its cumulant generating function, where the "
+        "lattice correction most treatments call a refinement is worth a factor of "
+        "seven hundred",
+        ("saddlepoint",),
+    ),
+    Unexposed(
+        "slippage",
+        "an execution schedule that holds a price forecast, and the measured fact "
+        "that a tuned proportional tilt recovers 99% of what solving it exactly is "
+        "worth on anything but a sharp signal",
+        ("alpha",),
     ),
 )
