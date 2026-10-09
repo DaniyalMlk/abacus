@@ -496,7 +496,7 @@ the headroom was about a fifth; it is 1.2% now, which is not enough for another
 tool of any size. The four bond groups are about 41,000 characters between them,
 so the room exists if the schemas are trimmed; raising the ceiling is the other
 option. Until one or the other happens, the libraries page below keeps growing
-instead — thirty-three capabilities that are built, tested and reachable by
+instead — thirty-six capabilities that are built, tested and reachable by
 importing the library, with no tool in front of them.
 
 ## The documentation site
