@@ -133,6 +133,11 @@ LIBRARIES: tuple[Library, ...] = (
                 "under the worst one",
                 ("spread",),
             ),
+            Capability(
+                "lookback options on where the path got to, all four of them from "
+                "one integral of the running extreme's own law",
+                ("lookback",),
+            ),
         ),
         plumbing=("cli",),
     ),
@@ -183,6 +188,12 @@ LIBRARIES: tuple[Library, ...] = (
                 "expectiles, the only risk measure that is coherent and elicitable "
                 "at once",
                 ("expectile",),
+            ),
+            Capability(
+                "a view imposed on a scenario set by reweighting it rather than by "
+                "filtering it, so the dependence that made the sample worth using "
+                "survives the stress",
+                ("entropy",),
             ),
         ),
         plumbing=("cli", "series"),
@@ -247,6 +258,11 @@ LIBRARIES: tuple[Library, ...] = (
                 "Bermudan swaptions, where several exercise dates leave no formula "
                 "for any of them",
                 ("bermudan",),
+            ),
+            Capability(
+                "covered interest parity across two currencies, and the "
+                "cross-currency basis that is the residual of it",
+                ("fx",),
             ),
         ),
         plumbing=("cli",),
@@ -543,5 +559,27 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "that a tuned proportional tilt recovers 99% of what solving it exactly is "
         "worth on anything but a sharp signal",
         ("alpha",),
+    ),
+    Unexposed(
+        "moneyness",
+        "lookback options on the running extreme, where the closed form everybody "
+        "transcribes divides by zero on an option on a future and a monthly fix is "
+        "worth eighteen per cent less than the continuous contract",
+        ("lookback",),
+    ),
+    Unexposed(
+        "shortfall",
+        "a view imposed on a scenario set by minimum relative entropy, where the "
+        "move it induces in a series the view never mentioned is that series' own "
+        "regression coefficient and its tail moves by under half of what a "
+        "parallel shift predicts",
+        ("entropy",),
+    ),
+    Unexposed(
+        "tenor",
+        "covered interest parity between two currencies and the basis left over, "
+        "where the two-day settlement lag nobody prices is nearly five per cent of "
+        "a three-month forward's points",
+        ("fx",),
     ),
 )
