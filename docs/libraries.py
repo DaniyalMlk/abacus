@@ -138,6 +138,12 @@ LIBRARIES: tuple[Library, ...] = (
                 "one integral of the running extreme's own law",
                 ("lookback",),
             ),
+            Capability(
+                "choosers and compound options, where the decision is taken at a "
+                "date before the payoff is known and the price is checked against "
+                "a decomposition that puts nothing of its own on the other side",
+                ("deferred",),
+            ),
         ),
         plumbing=("cli",),
     ),
@@ -194,6 +200,12 @@ LIBRARIES: tuple[Library, ...] = (
                 "filtering it, so the dependence that made the sample worth using "
                 "survives the stress",
                 ("entropy",),
+            ),
+            Capability(
+                "the range value at risk can occupy when the marginals are known "
+                "and the dependence is not, bracketed between two inequalities and "
+                "two couplings that are constructed rather than assumed",
+                ("bounds",),
             ),
         ),
         plumbing=("cli", "series"),
@@ -263,6 +275,12 @@ LIBRARIES: tuple[Library, ...] = (
                 "covered interest parity across two currencies, and the "
                 "cross-currency basis that is the residual of it",
                 ("fx",),
+            ),
+            Capability(
+                "overnight rates compounded over an accrual, under each of the "
+                "conventions on where the observation window sits, with the "
+                "replication identity reported where one exists",
+                ("overnight",),
             ),
         ),
         plumbing=("cli",),
@@ -581,5 +599,27 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "where the two-day settlement lag nobody prices is nearly five per cent of "
         "a three-month forward's points",
         ("fx",),
+    ),
+    Unexposed(
+        "moneyness",
+        "choosers and compound options, where the chooser's closed form is checked "
+        "against the vanilla pair put-call parity decomposes it into and each "
+        "compound pair against a parity that constrains both of its members at once",
+        ("deferred",),
+    ),
+    Unexposed(
+        "shortfall",
+        "value at risk bounded with no dependence named at all, where the worst "
+        "coupling runs to twice the comonotonic one on heavy tails and most of the "
+        "gap between the attained bound and the proved one is quadrature rather "
+        "than dependence",
+        ("bounds",),
+    ),
+    Unexposed(
+        "tenor",
+        "compounded overnight legs and the four conventions on the observation "
+        "window, where a five-day lookback is worth nothing on a smoothly "
+        "interpolated curve and nearly four basis points across a policy step",
+        ("overnight",),
     ),
 )
