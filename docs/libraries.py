@@ -326,6 +326,12 @@ LIBRARIES: tuple[Library, ...] = (
                 "forecast receives is the urgency the problem already had",
                 ("alpha",),
             ),
+            Capability(
+                "the size at which executing the trade consumes the alpha that "
+                "motivated it, under both of the conventions in use, which "
+                "disagree about which impact term sets the limit",
+                ("capacity",),
+            ),
         ),
         plumbing=("cli", "exceptions", "io", "series", "types"),
     ),
@@ -621,5 +627,12 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "window, where a five-day lookback is worth nothing on a smoothly "
         "interpolated curve and nearly four basis points across a policy step",
         ("overnight",),
+    ),
+    Unexposed(
+        "slippage",
+        "the size at which execution consumes the alpha, where holding the "
+        "participation rate fixed rather than the horizon turns the temporary "
+        "impact from a limit on the size into a floor on the alpha required",
+        ("capacity",),
     ),
 )
