@@ -332,6 +332,12 @@ LIBRARIES: tuple[Library, ...] = (
                 "disagree about which impact term sets the limit",
                 ("capacity",),
             ),
+            Capability(
+                "what a schedule built on a wrong impact coefficient or "
+                "volatility costs, which is one number because the schedule sees "
+                "the parameters only through their ratio",
+                ("robustness",),
+            ),
         ),
         plumbing=("cli", "exceptions", "io", "series", "types"),
     ),
@@ -361,6 +367,11 @@ LIBRARIES: tuple[Library, ...] = (
                 "sample weights for overlapping labels, and the effective sample "
                 "size they imply",
                 ("uniqueness",),
+            ),
+            Capability(
+                "the exact law of a track record's worst drawdown, and the depth "
+                "a strategy of a given Sharpe ratio reaches anyway",
+                ("drawdown",),
             ),
         ),
         plumbing=("cli", "exceptions", "io", "series", "synthetic"),
@@ -634,5 +645,21 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "participation rate fixed rather than the horizon turns the temporary "
         "impact from a limit on the size into a floor on the alpha required",
         ("capacity",),
+    ),
+    Unexposed(
+        "holdout",
+        "the exact law of a track record's worst drawdown, where a strategy with "
+        "no edge at all expects to fall 17.1% in its first year at 15% volatility "
+        "and the depth grows logarithmically rather than without bound once there "
+        "is an edge",
+        ("drawdown",),
+    ),
+    Unexposed(
+        "slippage",
+        "what a schedule built on the wrong parameters costs, where the forecast "
+        "is wrong to first order and the trades only to second, so a 10% error in "
+        "the impact coefficient misprices the trade by 3.4% and misplaces it by "
+        "0.04%",
+        ("robustness",),
     ),
 )
