@@ -207,6 +207,11 @@ LIBRARIES: tuple[Library, ...] = (
                 "two couplings that are constructed rather than assumed",
                 ("bounds",),
             ),
+            Capability(
+                "the eigenvalues of a covariance estimate separated into the ones "
+                "its dimensions can distinguish and the ones that are noise",
+                ("cleaning",),
+            ),
         ),
         plumbing=("cli", "series"),
     ),
@@ -281,6 +286,11 @@ LIBRARIES: tuple[Library, ...] = (
                 "conventions on where the observation window sits, with the "
                 "replication identity reported where one exists",
                 ("overnight",),
+            ),
+            Capability(
+                "a parametric forward curve fitted by least squares, for a set of "
+                "bonds that no curve passes through",
+                ("parametric",),
             ),
         ),
         plumbing=("cli",),
@@ -372,6 +382,11 @@ LIBRARIES: tuple[Library, ...] = (
                 "the exact law of a track record's worst drawdown, and the depth "
                 "a strategy of a given Sharpe ratio reaches anyway",
                 ("drawdown",),
+            ),
+            Capability(
+                "intervals that hold at every record length at once, for a record "
+                "that is read as it accumulates rather than sampled once",
+                ("sequential",),
             ),
         ),
         plumbing=("cli", "exceptions", "io", "series", "synthetic"),
@@ -661,5 +676,29 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "the impact coefficient misprices the trade by 3.4% and misplaces it by "
         "0.04%",
         ("robustness",),
+    ),
+    Unexposed(
+        "tenor",
+        "a parametric forward curve fitted to more bond quotes than it has "
+        "parameters, reported with the band of decay parameters that reprice those "
+        "quotes equally well -- a factor of 104 wide at ten basis points, across "
+        "which the slope coefficient moves by thousands while the curve does not",
+        ("parametric",),
+    ),
+    Unexposed(
+        "holdout",
+        "anytime-valid intervals for a record read as it accumulates, where "
+        "monitoring an ordinary 95% interval and stopping at the first crossing "
+        "rejects 44% of the time at 250 observations with no edge present, and "
+        "replacing it costs a factor of 3.40 in data",
+        ("sequential",),
+    ),
+    Unexposed(
+        "shortfall",
+        "the noise band a covariance estimate's own dimensions imply, and the "
+        "factor strength below which a direction leaves no trace in the spectrum "
+        "whatever its true size -- at sixty assets over a hundred and twenty "
+        "observations, anything adding less than half again a direction's variance",
+        ("cleaning",),
     ),
 )
