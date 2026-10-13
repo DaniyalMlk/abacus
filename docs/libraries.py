@@ -139,6 +139,12 @@ LIBRARIES: tuple[Library, ...] = (
                 ("lookback",),
             ),
             Capability(
+                "options on a foreign share in all four of the forms the contract "
+                "is written in, where one correlation leaves one of the four prices "
+                "untouched and moves two of the others in opposite directions",
+                ("quanto",),
+            ),
+            Capability(
                 "choosers and compound options, where the decision is taken at a "
                 "date before the payoff is known and the price is checked against "
                 "a decomposition that puts nothing of its own on the other side",
@@ -211,6 +217,12 @@ LIBRARIES: tuple[Library, ...] = (
                 "the eigenvalues of a covariance estimate separated into the ones "
                 "its dimensions can distinguish and the ones that are noise",
                 ("cleaning",),
+            ),
+            Capability(
+                "risk for a book that is quadratic in its factors rather than "
+                "linear, including the loss bound a long-gamma book has and a "
+                "delta-only model cannot express",
+                ("quadratic",),
             ),
         ),
         plumbing=("cli", "series"),
@@ -291,6 +303,12 @@ LIBRARIES: tuple[Library, ...] = (
                 "a parametric forward curve fitted by least squares, for a set of "
                 "bonds that no curve passes through",
                 ("parametric",),
+            ),
+            Capability(
+                "the convexity adjustment a daily-margined rate future carries over "
+                "the forward its own accrual period implies, exactly and for each of "
+                "the three settlement conventions",
+                ("convexity",),
             ),
         ),
         plumbing=("cli",),
@@ -429,11 +447,34 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         ("heston_mc",),
     ),
     Unexposed(
+        "moneyness",
+        "cross-currency equity options -- foreign struck, quanto, composite and "
+        "equity-linked -- and the recovery of the exchange rate's volatility and "
+        "its correlation from two prices, neither of which identifies either on "
+        "its own",
+        ("quanto",),
+    ),
+    Unexposed(
         "shortfall",
         "volatility from open, high, low and close, by five range estimators",
         ("realised",),
     ),
+    Unexposed(
+        "shortfall",
+        "second-order risk for a book of options, with the loss floor a "
+        "long-gamma book has and the confidence above which a delta-only number "
+        "exceeds it",
+        ("quadratic",),
+    ),
     Unexposed("tenor", "floating rate notes and discount margins", ("floating",)),
+    Unexposed(
+        "tenor",
+        "the futures-forward convexity adjustment under a mean-reverting short "
+        "rate, for term, compounded and averaged settlement, where the textbook "
+        "approximation is half again too small at the front of a strip and ten "
+        "times too large at the back",
+        ("convexity",),
+    ),
     Unexposed(
         "tenor",
         "index-linked bonds, real duration and breakeven inflation",
