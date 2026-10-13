@@ -471,8 +471,8 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "tenor",
         "the futures-forward convexity adjustment under a mean-reverting short "
         "rate, for term, compounded and averaged settlement, where the textbook "
-        "approximation is half again too small at the front of a strip and ten "
-        "times too large at the back",
+        "approximation's error changes sign between the front of a strip and the "
+        "back of it",
         ("convexity",),
     ),
     Unexposed(
