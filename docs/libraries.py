@@ -224,6 +224,12 @@ LIBRARIES: tuple[Library, ...] = (
                 "delta-only model cannot express",
                 ("quadratic",),
             ),
+            Capability(
+                "the worst loss over a plausibility ellipsoid, exactly, and the "
+                "factor move that produces it -- against which moving one factor "
+                "at a time understates by a factor that grows with the book",
+                ("stress",),
+            ),
         ),
         plumbing=("cli", "series"),
     ),
@@ -366,6 +372,12 @@ LIBRARIES: tuple[Library, ...] = (
                 "the parameters only through their ratio",
                 ("robustness",),
             ),
+            Capability(
+                "splitting one order across venues whose available liquidity is "
+                "random, where a posted lot is worth the probability that it is "
+                "both reached and needed",
+                ("routing",),
+            ),
         ),
         plumbing=("cli", "exceptions", "io", "series", "types"),
     ),
@@ -405,6 +417,12 @@ LIBRARIES: tuple[Library, ...] = (
                 "intervals that hold at every record length at once, for a record "
                 "that is read as it accumulates rather than sampled once",
                 ("sequential",),
+            ),
+            Capability(
+                "an interval for the Sharpe ratio of the strategy that was "
+                "selected, conditional on its having been selected, which the "
+                "ordinary interval covers 31% of the time out of fifty candidates",
+                ("selection",),
             ),
         ),
         plumbing=("cli", "exceptions", "io", "series", "synthetic"),
@@ -458,6 +476,14 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "shortfall",
         "volatility from open, high, low and close, by five range estimators",
         ("realised",),
+    ),
+    Unexposed(
+        "shortfall",
+        "the exact worst loss over a plausibility ellipsoid and the factor move "
+        "that causes it, beside the one-factor-at-a-time stress test it replaces "
+        "-- which understates by a median factor of 6.8 over eight factors, and "
+        "whose per-factor losses do not sum to a bound on anything",
+        ("stress",),
     ),
     Unexposed(
         "shortfall",
@@ -741,5 +767,23 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "whatever its true size -- at sixty assets over a hundred and twenty "
         "observations, anything adding less than half again a direction's variance",
         ("cleaning",),
+    ),
+    Unexposed(
+        "slippage",
+        "where to put one order across venues whose available liquidity is "
+        "random, exactly and on the lot lattice, where a posted lot is worth the "
+        "probability that it is both reached and needed -- so the venues are "
+        "ranked by their liquidity at the margin rather than by their average, "
+        "and the two orderings disagree",
+        ("routing",),
+    ),
+    Unexposed(
+        "holdout",
+        "an interval for the Sharpe ratio of the strategy that was selected, "
+        "conditional on its having been selected, against which the ordinary "
+        "interval covers the winner's own truth 31% of the time out of fifty "
+        "equally good candidates -- and which is the wrong tool once those "
+        "candidates correlate above about three quarters",
+        ("selection",),
     ),
 )
