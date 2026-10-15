@@ -230,6 +230,12 @@ LIBRARIES: tuple[Library, ...] = (
                 "at a time understates by a factor that grows with the book",
                 ("stress",),
             ),
+            Capability(
+                "tail risk for a book with a calm state and a stressed one, where "
+                "the expected shortfall is not the average of the two states' "
+                "expected shortfalls and the gap is 45% at the level people report",
+                ("mixture",),
+            ),
         ),
         plumbing=("cli", "series"),
     ),
@@ -316,6 +322,12 @@ LIBRARIES: tuple[Library, ...] = (
                 "the three settlement conventions",
                 ("convexity",),
             ),
+            Capability(
+                "the asset swap spread a bond is actually quoted on, in both of "
+                "its conventions, which differ by par over the price and neither "
+                "of which bounds the Z-spread",
+                ("assetswap",),
+            ),
         ),
         plumbing=("cli",),
     ),
@@ -377,6 +389,12 @@ LIBRARIES: tuple[Library, ...] = (
                 "random, where a posted lot is worth the probability that it is "
                 "both reached and needed",
                 ("routing",),
+            ),
+            Capability(
+                "the effective spread estimated from bars by three published "
+                "estimators, each reported with the share of windows it refused "
+                "and its value before those refusals were floored at zero",
+                ("spread",),
             ),
         ),
         plumbing=("cli", "exceptions", "io", "series", "types"),
@@ -492,6 +510,16 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "exceeds it",
         ("quadratic",),
     ),
+    Unexposed(
+        "shortfall",
+        "value at risk and expected shortfall for a book drawn from a mixture of "
+        "regimes, with the share of the tail each regime is responsible for -- a "
+        "state happening 5% of the time carries 97% of the losses past the 99th "
+        "percentile -- and the horizon law under a Markov chain of states, where "
+        "the square-root rule is wrong in a direction that depends on the "
+        "confidence level",
+        ("mixture",),
+    ),
     Unexposed("tenor", "floating rate notes and discount margins", ("floating",)),
     Unexposed(
         "tenor",
@@ -518,12 +546,29 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "cheapest bond to deliver",
         ("futures",),
     ),
+    Unexposed(
+        "tenor",
+        "asset swap spreads in the par-par and proceeds conventions, which differ "
+        "by exactly par over the dirty price, together with the residual the "
+        "textbook formula's cancellation leaves whenever the floating leg's rolled "
+        "dates and the bond's part company",
+        ("assetswap",),
+    ),
     Unexposed("slippage", "post-trade mark-outs and reversion decay", ("reversion",)),
     Unexposed(
         "slippage",
         "impact that decays at a rate rather than instantly, and the "
         "block-rate-block schedule that minimises its cost",
         ("transient",),
+    ),
+    Unexposed(
+        "slippage",
+        "the effective spread inferred from bars by the Roll, Corwin-Schultz and "
+        "Abdi-Ranaldo estimators, each carrying its refusal rate and its value "
+        "before negatives were floored -- which at the spread-to-volatility ratio "
+        "of a liquid stock is below zero, so the reported spread is the flooring "
+        "and not an estimate",
+        ("spread",),
     ),
     Unexposed(
         "holdout",
