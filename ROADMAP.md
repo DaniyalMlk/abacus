@@ -386,3 +386,33 @@ paths are under one, so `copulaDegrees` is both the stress-scenario argument and
 the way to make the call fast. One duplicate bound was removed rather than kept:
 the path range lives in the schema alone, whose refusal arrives earlier and names
 the field, the bound and the value given.
+
+## Phase 20 — Three libraries grew a module, and the page had to say so
+
+- [x] A capability phrase for `shortfall.mixture`, `tenor.assetswap` and
+      `slippage.spread`
+- [x] An unexposed entry for each, because the listing budget has no room
+- [x] The README's spelled-out count moved to match the list's length
+- [x] All three libraries checked at once, rather than one failure at a time
+
+Nothing here is a tool. The listing is 138,286 characters against 140,000 and
+Phase 19 recorded that the next addition needs the budget decided rather than
+assumed; that has not happened, so the three capabilities join the fifty-one
+already reachable by importing a library and unreachable through the server.
+
+### Why all three at once
+
+`test_every_library_module_is_described_or_declared_internal` asserts inside
+its loop over the libraries, so it reports the first library with a gap and
+stops. Fixing what the message names turns the build red again on the next
+push with the second library's module, and again with the third. The
+accounting here was written by iterating the whole table and collecting every
+gap before touching the file, which is the only way one edit closes all of
+them.
+
+The same shape applies to the wheelhouse. It builds each library from its
+default branch at job time with no cache, so these three failures would have
+arrived here attached to whatever commit happened to be pushed next. The
+accounting was therefore re-run against the libraries installed from their
+merged default branches rather than from a working copy, which is the state
+the next build will see.
