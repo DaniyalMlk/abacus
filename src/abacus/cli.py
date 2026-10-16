@@ -81,8 +81,10 @@ def _parser() -> argparse.ArgumentParser:
 
     http = sub.add_parser("http", help="serve over Streamable HTTP")
     http.add_argument("--host", default="127.0.0.1", help="default: loopback only")
-    http.add_argument("--port", type=int, default=8000)
-    http.add_argument("--endpoint", default="/mcp")
+    http.add_argument("--port", type=int, default=8000, help="default: 8000")
+    http.add_argument(
+        "--endpoint", default="/mcp", help="path the server answers on"
+    )
     http.add_argument(
         "--allow-origin",
         action="append",
