@@ -123,6 +123,27 @@ jobs:
           python -m venv /tmp/check
           /tmp/check/bin/pip install dist/*.whl
           /tmp/check/bin/pip list | grep -E '^moneyness '
+      # Every command's --help, against the artefact that would be published.
+      # argparse expands help strings through %-formatting at display time, so
+      # a literal per cent sign raises TypeError there and nowhere else: a
+      # suite exercises the commands and the commands work. Only --help is
+      # broken, and it is the first thing anybody types.
+      - name: Every command prints help
+        run: |
+          /tmp/check/bin/abacus --help > /dev/null
+          for sub in $(/tmp/check/bin/python - <<'PY'
+          import argparse
+          from abacus.cli import _parser
+          for action in _parser()._actions:
+              if isinstance(action, argparse._SubParsersAction):
+                  print(" ".join(sorted(action.choices)))
+                  break
+          PY
+          ); do
+            /tmp/check/bin/abacus "$sub" --help > /dev/null || {
+              echo "abacus $sub --help failed"; exit 1; }
+          done
+          echo "every command printed help"
       - name: The entry point runs and answers a request
         # A wheel that imports but cannot answer a request is not a working
         # server, so the check drives one through the stdio transport.

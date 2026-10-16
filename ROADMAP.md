@@ -416,3 +416,15 @@ arrived here attached to whatever commit happened to be pushed next. The
 accounting was therefore re-run against the libraries installed from their
 merged default branches rather than from a working copy, which is the state
 the next build will see.
+
+## Phase 21 — The command line's help is rendered by a test
+
+- [x] Help text on the two options that had none
+- [x] A parametrised sweep that renders `--help` for the root parser and every
+      subcommand, since a help string is expanded only when it is displayed
+      and nothing had displayed one
+- [x] Commands enumerated by walking the parser, recursively, rather than
+      listed by hand
+- [x] A completeness check that every argument carries help at all
+- [x] The sweep verified against the regression it exists for
+- [x] The same sweep in CI against the built wheel
