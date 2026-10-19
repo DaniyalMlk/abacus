@@ -428,3 +428,45 @@ the next build will see.
 - [x] A completeness check that every argument carries help at all
 - [x] The sweep verified against the regression it exists for
 - [x] The same sweep in CI against the built wheel
+
+## Phase 22 — A front page that says what the boundary was checked against
+
+- [x] A table of what was measured and against what, above the install line.
+      Every sibling project had one and this did not, which left the project
+      with the weakest claim to be taken on trust making its case in prose
+- [x] The question asked as a *boundary's* question rather than a library's.
+      The formulae live in five libraries that each validate their own; what
+      can go wrong here is a tool returning a plausible number computed from
+      the wrong argument, or from the right argument in the wrong units, and
+      nothing about a plausible number says which
+- [x] The strongest row first: the analytic Greeks against central differences
+      of the prices this server itself returns, through the registry rather
+      than by calling the library behind it, since the schema coercion and the
+      argument names are what is under test
+- [x] The tolerance chosen by measuring what it catches rather than by picking
+      a round number. Widening the delta step a thousandfold leaves the residue
+      at 6.5e-07 and inside the 1e-06 bound, so the figure is not an artefact
+      of the step; reading the Greeks at a volatility 1% away fails at
+      3.9e-06. Both halves asserted, because a bound nothing can violate is
+      not evidence
+- [x] The listing budget on the front page, where it belongs: 138,286 of
+      140,000 characters across 39 tools is 1.2% of headroom, and that is a
+      constraint on what can be exposed next rather than a boast
+- [x] The budget held to one value across the three files that now state it —
+      `docs/evidence.py`, `docs/build.py` and `tests/test_skill.py` — since a
+      gate measuring against a stale ceiling would pass while the listing was
+      over the one the site advertises
+- [x] The conformance figure reported as 19 passing and 10 skipped rather than
+      as 29 of 29, because ten checks need a real HTTP endpoint and the single
+      number would be a claim about whichever transport measured it
+- [x] Pinned in both directions, with the whole rendered row checked rather
+      than the label and the value separately, so a figure moved into the
+      wrong row fails too
+- [x] The value direction deliberately not scanned: the page carries 138,286
+      and 140,000 within a few characters of each other, so a check looking
+      for a number near a place can pass against the wrong one
+- [x] The stale suite size replaced. It said 629 against a suite of 880, which
+      is how an exact count goes wrong — it fails on every commit that adds a
+      test, so people update it without reading it until one day they stop.
+      Bounded a quarter either way and counted by asking pytest
+
