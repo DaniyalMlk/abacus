@@ -54,6 +54,63 @@ backtest validation. The last two install as `slippage-tca` and
 `holdout-backtest`, because the short names on the index belong to unrelated
 projects; their import names are unchanged.
 
+## What is checked, and against what
+
+The libraries underneath validate their own mathematics against closed forms,
+high-precision references and published results, and each says so on its own
+front page. This project is a *boundary*, so the question here is a different
+one. A boundary's characteristic failure is not a wrong formula; it is a tool
+that returns a plausible number computed from the wrong argument, or from the
+right argument in the wrong units, and nothing about a plausible number says
+which. So here is what the wiring was checked against. Every figure is produced
+by `docs/evidence.py`, which runs in CI and exits non-zero if one of them moves:
+
+| Check | Result |
+| --- | --- |
+| The Greeks against finite differences of this server's own prices | delta, vega and gamma all within 6e-10, from different formulae |
+| The conformance suite, against this server in process | 19 of 29 pass, the other 10 needing a real HTTP endpoint; revision 2026-07-28 |
+| What a client receives when it lists the tools, against the ceiling | 138,286 of 140,000 characters across 39 tools, 1,714 left |
+| What is deliberately not exposed, held to a table that fails both ways | 54 capabilities across 5 libraries |
+
+**The first row is the one that says the boundary is wired correctly.** The
+analytic delta the Greeks tool reports is compared against a central difference
+of the prices the *pricing* tool reports — two different formulae, reached
+through two different schema paths, with the arguments coerced separately each
+time. Self-consistency would prove nothing here; agreement between two
+independent routes to the same quantity is evidence about the plumbing.
+
+The tolerance was chosen by measuring what it catches rather than by picking a
+round number, and the pair of results is the reason to believe it. Widening the
+delta step by a factor of a *thousand*, from 1e-4 to 1e-1, moves the residue
+only to 6.5e-07 — still inside the 1e-06 bound, so the figure is not an
+artefact of the step. Reading the Greeks at a volatility 1% away from the one
+the prices were taken at moves it to 3.9e-06 and fails. A bound that survives a
+thousandfold change of step and refuses a one-per-cent change of argument is
+measuring the thing it claims to.
+
+**The third row is a constraint, not a boast.** The whole tool surface
+serialises to 138,286 characters against a ceiling of 140,000 — 1.2% of
+headroom, across 39 tools. Nothing substantial can be exposed next without
+either raising that ceiling deliberately or trimming what is there, and the
+four bond tools are about 41,000 characters between them. The documentation site
+lists the 54 capabilities that are deliberately not exposed, and
+`tests/test_docs.py` fails in both directions: a library module that gains
+something undescribed, and a description with nothing behind it.
+
+The conformance figure is reported as 19 passing with 10 skipped rather than as
+29 of 29, because ten of the checks need a real HTTP endpoint and "29 of 29"
+would be a claim about whichever transport the figure happened to be measured
+on. CI runs the suite over both transports separately.
+
+The Greek residues are quoted as bounds rather than digits. Where an analytic
+derivative and a difference of two prices stop agreeing depends on the step and
+on the floating-point unit, so ten significant places would be a number that
+happens to be true where it was measured.
+
+```bash
+python docs/evidence.py     # all four, non-zero if a figure moves
+```
+
 ## Running it
 
 ```bash
@@ -742,7 +799,7 @@ endpoint that was never there.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 629 tests
+pytest          # 880 tests
 mypy --strict
 ruff check .
 ```

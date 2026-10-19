@@ -78,6 +78,13 @@ jobs:
       # wrong, and a model calling it has no way to tell.
       - name: The skill, its transcripts and the surface budget
         run: pytest tests/test_skill.py -q
+      # The front page's gate, as a step of its own as well as through the
+      # suite. The suite runs it inside a test so that a figure that moves
+      # fails on the commit that moved it; this step is here so the failure
+      # reads as "the evidence moved" in the job list rather than as one test
+      # among nearly nine hundred.
+      - name: The front page's figures still hold
+        run: python docs/evidence.py
 
   checks:
     name: Types and lint
