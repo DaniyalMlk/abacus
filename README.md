@@ -70,7 +70,7 @@ by `docs/evidence.py`, which runs in CI and exits non-zero if one of them moves:
 | The Greeks against finite differences of this server's own prices | delta, vega and gamma all within 6e-10, from different formulae |
 | The conformance suite, against this server in process | 19 of 29 pass, the other 10 needing a real HTTP endpoint; revision 2026-07-28 |
 | What a client receives when it lists the tools, against the ceiling | 138,286 of 140,000 characters across 39 tools, 1,714 left |
-| What is deliberately not exposed, held to a table that fails both ways | 54 capabilities across 5 libraries |
+| What is deliberately not exposed, held to a table that fails both ways | 55 capabilities across 5 libraries |
 
 **The first row is the one that says the boundary is wired correctly.** The
 analytic delta the Greeks tool reports is compared against a central difference
@@ -553,7 +553,7 @@ the headroom was about a fifth; it is 1.2% now, which is not enough for another
 tool of any size. The four bond groups are about 41,000 characters between them,
 so the room exists if the schemas are trimmed; raising the ceiling is the other
 option. Until one or the other happens, the libraries page below keeps growing
-instead — fifty-four capabilities that are built, tested and reachable by
+instead — fifty-five capabilities that are built, tested and reachable by
 importing the library, with no tool in front of them.
 
 ## The documentation site
