@@ -407,6 +407,11 @@ LIBRARIES: tuple[Library, ...] = (
                 "deflated Sharpe ratios and effective trial counts",
                 ("deflated", "sharpe", "trials", "moments"),
             ),
+            Capability(
+                "returns put in excess of a financing rate, and what that takes off "
+                "a Sharpe ratio before any search is accounted for",
+                ("financing",),
+            ),
             Capability("the probability of backtest overfitting", ("pbo",)),
             Capability("purged and combinatorial cross-validation", ("splits",)),
             Capability(
@@ -569,6 +574,18 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "of a liquid stock is below zero, so the reported spread is the flooring "
         "and not an estimate",
         ("spread",),
+    ),
+    Unexposed(
+        "holdout",
+        "financing: returns in excess of a cash rate, where a Sharpe ratio taken "
+        "on total returns is too high by the rate over the volatility -- 0.31 "
+        "annualised at 5% cash and 16% volatility, which takes the deflated Sharpe "
+        "ratio of the best of thirty crossover rules from 0.971 to 0.644 while "
+        "leaving the benchmark the search earns where it was -- and where one cash "
+        "rate is not one shift, since it is the rate over each strategy's own "
+        "volatility, so the strategy that looks best can change and the field it "
+        "won against is not the field it was judged against",
+        ("financing",),
     ),
     Unexposed(
         "holdout",
