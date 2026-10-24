@@ -547,6 +547,18 @@ UNEXPOSED: tuple[Unexposed, ...] = (
     ),
     Unexposed(
         "tenor",
+        "a credit default swap that has already started, which is every "
+        "contract in a book: periods dropped by payment date rather than by "
+        "accrual end, the accrual-on-default weight kept at the period's own "
+        "start, and the upfront settlement split into principal and accrued -- "
+        "with the forward price of a risky bond divided by the survival "
+        "probability to settlement as well as by the discount factor, since a "
+        "forward is for an instrument you only own if it has not defaulted "
+        "first",
+        ("credit",),
+    ),
+    Unexposed(
+        "tenor",
         "deliverable bond futures: conversion factors, the basis and the "
         "cheapest bond to deliver",
         ("futures",),
