@@ -197,8 +197,7 @@ LIBRARIES: tuple[Library, ...] = (
                 ("scoring",),
             ),
             Capability(
-                "expectiles, the only risk measure that is coherent and elicitable "
-                "at once",
+                "expectiles, the only risk measure that is coherent and elicitable at once",
                 ("expectile",),
             ),
             Capability(
@@ -291,13 +290,11 @@ LIBRARIES: tuple[Library, ...] = (
                 ("hullwhite",),
             ),
             Capability(
-                "a second factor, so that two rates are no longer forced to move "
-                "together",
+                "a second factor, so that two rates are no longer forced to move together",
                 ("g2",),
             ),
             Capability(
-                "Bermudan swaptions, where several exercise dates leave no formula "
-                "for any of them",
+                "Bermudan swaptions, where several exercise dates leave no formula for any of them",
                 ("bermudan",),
             ),
             Capability(
@@ -427,8 +424,7 @@ LIBRARIES: tuple[Library, ...] = (
                 ("stability",),
             ),
             Capability(
-                "sample weights for overlapping labels, and the effective sample "
-                "size they imply",
+                "sample weights for overlapping labels, and the effective sample size they imply",
                 ("uniqueness",),
             ),
             Capability(
@@ -559,8 +555,7 @@ UNEXPOSED: tuple[Unexposed, ...] = (
     ),
     Unexposed(
         "tenor",
-        "deliverable bond futures: conversion factors, the basis and the "
-        "cheapest bond to deliver",
+        "deliverable bond futures: conversion factors, the basis and the cheapest bond to deliver",
         ("futures",),
     ),
     Unexposed(
@@ -652,7 +647,10 @@ UNEXPOSED: tuple[Unexposed, ...] = (
     Unexposed(
         "slippage",
         "whether to rest a limit order or cross the spread, and why the placement "
-        "distance turns out not to be a choice",
+        "distance turns out not to be a choice -- with the fill probability exactly "
+        "twice the chance of merely ending below the limit when the mid has no drift, "
+        "and 5.4 times it at one standard deviation of adverse drift, which is the "
+        "whole of what being picked off costs",
         ("placement",),
     ),
     Unexposed(
@@ -799,7 +797,11 @@ UNEXPOSED: tuple[Unexposed, ...] = (
         "slippage",
         "the size at which execution consumes the alpha, where holding the "
         "participation rate fixed rather than the horizon turns the temporary "
-        "impact from a limit on the size into a floor on the alpha required",
+        "impact from a limit on the size into a floor on the alpha required, and "
+        "where the interval length rather than the interval count is what bounds "
+        "the discretisation, since a patient rate is a long horizon and the "
+        "discrete problem stops existing once an interval is long enough for the "
+        "permanent impact to outweigh the temporary",
         ("capacity",),
     ),
     Unexposed(
