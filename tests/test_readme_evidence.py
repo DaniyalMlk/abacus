@@ -58,7 +58,7 @@ QUOTED = (
     "delta, vega and gamma all within 6e-10, from different formulae",
     "19 of 29 pass, the other 10 needing a real HTTP endpoint; revision 2026-07-28",
     "138,286 of 140,000 characters across 39 tools, 1,714 left",
-    "55 capabilities across 5 libraries",
+    "56 capabilities across 5 libraries",
 )
 
 #: Row labels from the evidence table. Presence is what is checked, not the
