@@ -872,7 +872,13 @@ def test_the_simulated_horizon_agrees_with_the_analytic_volatility(
     assert simulated["paths"] == 10_000
     assert simulated["steps"] == 10
     assert simulated["draw"] == "bootstrap"
-    assert simulated["simulatedVolatility"] == pytest.approx(
+    # Against the SUMMED volatility, which is what the analytic aggregation
+    # predicts. The variance of a product is not the sum of the variances, so
+    # under the simple convention the compounded figure has no closed form here
+    # to be checked against — and at ten periods it sits within half a percent
+    # of this one anyway, so pointing the check at it would leave it passing
+    # while it stopped meaning anything.
+    assert simulated["additiveVolatility"] == pytest.approx(
         simulated["analyticVolatility"], rel=0.03
     )
     assert simulated["analyticVolatility"] == pytest.approx(
@@ -890,14 +896,25 @@ def test_the_horizon_quantile_is_not_the_volatility_times_a_multiplier(
     the size of the gap in units of the simulation's own error is the evidence that
     it is a difference rather than noise.
 
-    Measured over four samples at ten steps and 40,000 paths, the gap came to
-    2.5, 11.0, 8.2 and 0.6 standard errors — mean 5.5. So it is *not* decisive on every
-    sample, and that variation is itself worth knowing: how far the horizon quantile
-    departs from a scaled one depends on where the fit sits relative to its long-run
-    level, which changes from series to series. The assertion is on the mean over
-    samples and on the sign, not on any single run being significant.
+    The substitution is built out of the analytic horizon volatility, which is a
+    statement about the SUM of the periods, so the like-for-like comparison is
+    against `summedValueAtRisk`. Measured over four samples at ten steps and 40,000
+    paths, that gap came to 2.7, 12.3, 8.8 and 0.6 standard errors — mean 6.1,
+    positive on all four. So it is *not* decisive on every sample, and that
+    variation is itself worth knowing: how far the horizon quantile departs from a
+    scaled one depends on where the fit sits relative to its long-run level, which
+    changes from series to series.
+
+    **The two errors point in opposite directions, and can hide each other.**
+    Against the compounded figure the same gaps are -0.6, +7.6, +4.8 and -3.8 — mean
+    2.0, positive on two of four. Substituting a scaled quantile overstates the
+    loss and summing simple returns overstates it too, so a caller who does both at
+    once can land within one standard error of the right answer for two wrong
+    reasons. Which is why this is asserted on the summed figure and the cancellation
+    is asserted separately rather than left to be noticed.
     """
-    gaps = []
+    summed_gaps = []
+    compounded_gaps = []
     for seed in range(4):
         payload = call(
             registry,
@@ -912,9 +929,18 @@ def test_the_horizon_quantile_is_not_the_volatility_times_a_multiplier(
         )
         simulated = payload["horizonRisk"]
         substituted = payload["quantileMultiplier"] * payload["horizonVolatility"]
-        gaps.append((simulated["valueAtRisk"] - substituted) / simulated["standardError"])
-    assert sum(gaps) / len(gaps) > 2.0
-    assert sum(gap > 0.0 for gap in gaps) >= 3
+        error = simulated["standardError"]
+        summed_gaps.append((simulated["summedValueAtRisk"] - substituted) / error)
+        compounded_gaps.append((simulated["valueAtRisk"] - substituted) / error)
+    assert sum(summed_gaps) / len(summed_gaps) > 4.0
+    assert all(gap > 0.0 for gap in summed_gaps)
+    # The cancellation: every compounded gap is smaller, and the sign no longer
+    # holds on every sample.
+    assert all(
+        compounded < summed
+        for compounded, summed in zip(compounded_gaps, summed_gaps, strict=True)
+    )
+    assert any(gap < 0.0 for gap in compounded_gaps)
 
 
 def test_the_two_square_root_of_time_ratios_disagree(registry: ToolRegistry) -> None:
@@ -1003,3 +1029,89 @@ def test_the_same_seed_gives_the_same_horizon_figure(registry: ToolRegistry) -> 
     assert first["horizonRisk"]["valueAtRisk"] == second["horizonRisk"]["valueAtRisk"]
     moved = call(registry, "conditional_volatility", {**arguments, "seed": 99})
     assert moved["horizonRisk"]["valueAtRisk"] != first["horizonRisk"]["valueAtRisk"]
+
+
+def test_the_horizon_convention_is_the_caller_s_to_state(registry: ToolRegistry) -> None:
+    """`returns` does not say which convention it holds, so an argument does.
+
+    Over one period it makes no difference; over sixty it decides the arithmetic,
+    because simple returns compound and log returns add. Both figures come back
+    either way, so a caller handed the compounded number can see what the
+    shortcut would have given rather than having to know the question existed.
+    """
+    data = garch_path(1500)
+    asked = {"returns": data, "horizon": 60, "paths": 10_000, "includeForecasts": False}
+    simple = call(registry, "conditional_volatility", asked)["horizonRisk"]
+    logged = call(
+        registry, "conditional_volatility", {**asked, "convention": "log"}
+    )["horizonRisk"]
+
+    assert simple["convention"] == "simple"
+    assert logged["convention"] == "log"
+    # Simple is the default, so asking for it explicitly changes nothing.
+    explicit = call(
+        registry, "conditional_volatility", {**asked, "convention": "simple"}
+    )["horizonRisk"]
+    assert explicit["valueAtRisk"] == simple["valueAtRisk"]
+
+    # Same draws either way, so the summed figure is identical and only the
+    # reported one moves.
+    assert simple["summedValueAtRisk"] == logged["summedValueAtRisk"]
+    assert logged["valueAtRisk"] == logged["summedValueAtRisk"]
+    assert logged["compoundingFactor"] == 1.0
+    assert simple["valueAtRisk"] < simple["summedValueAtRisk"]
+    assert 0.85 < simple["compoundingFactor"] < 1.0
+    assert simple["ruinedPaths"] == logged["ruinedPaths"] == 0
+    # The square-root ratios are additive statements, so they do not move; the
+    # loss ratio is the one in the convention asked for.
+    assert (
+        simple["quantileAgainstSquareRootOfTime"]
+        == logged["quantileAgainstSquareRootOfTime"]
+    )
+    assert simple["lossAgainstSquareRootOfTime"] < logged["lossAgainstSquareRootOfTime"]
+    assert simple["lossAgainstSquareRootOfTime"] == pytest.approx(
+        simple["quantileAgainstSquareRootOfTime"] * simple["compoundingFactor"],
+        rel=1e-12,
+        abs=0.0,
+    )
+
+
+def test_the_convention_gap_grows_with_the_horizon(registry: ToolRegistry) -> None:
+    """A compounding effect, so it has to compound.
+
+    One period is exact — a return is its own horizon return either way — and the
+    gap widens from there. A figure that moved by a constant would be a units
+    error rather than the convention.
+    """
+    data = garch_path(1500)
+    factors = []
+    for horizon in (1, 10, 60, 250):
+        simulated = call(
+            registry,
+            "conditional_volatility",
+            {
+                "returns": data,
+                "horizon": horizon,
+                "paths": 10_000,
+                "includeForecasts": False,
+            },
+        )["horizonRisk"]
+        factors.append(simulated["compoundingFactor"])
+    assert factors[0] == pytest.approx(1.0, rel=1e-12)
+    assert factors == sorted(factors, reverse=True)
+    assert factors[-1] < 0.9
+
+
+def test_a_convention_the_schema_does_not_know_is_refused(registry: ToolRegistry) -> None:
+    """And the refusal names the field and the two choices it accepts."""
+    registered = tool(registry, "conditional_volatility")
+    properties = registered.input_schema["properties"]
+    assert properties["convention"]["enum"] == ["simple", "log"]
+    result = registry.call(
+        "conditional_volatility",
+        {"returns": garch_path(400), "paths": 2_000, "convention": "geometric"},
+    )
+    assert result["isError"] is True
+    text = json.dumps(result["content"])
+    assert "convention" in text
+    assert "simple" in text and "log" in text

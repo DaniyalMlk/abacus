@@ -69,7 +69,7 @@ by `docs/evidence.py`, which runs in CI and exits non-zero if one of them moves:
 | --- | --- |
 | The Greeks against finite differences of this server's own prices | delta, vega and gamma all within 6e-10, from different formulae |
 | The conformance suite, against this server in process | 19 of 29 pass, the other 10 needing a real HTTP endpoint; revision 2026-07-28 |
-| What a client receives when it lists the tools, against the ceiling | 138,286 of 140,000 characters across 39 tools, 1,714 left |
+| What a client receives when it lists the tools, against the ceiling | 138,605 of 140,000 characters across 39 tools, 1,395 left |
 | What is deliberately not exposed, held to a table that fails both ways | 56 capabilities across 5 libraries |
 
 **The first row is the one that says the boundary is wired correctly.** The
@@ -89,7 +89,7 @@ thousandfold change of step and refuses a one-per-cent change of argument is
 measuring the thing it claims to.
 
 **The third row is a constraint, not a boast.** The whole tool surface
-serialises to 138,286 characters against a ceiling of 140,000 — 1.2% of
+serialises to 138,605 characters against a ceiling of 140,000 — 1.0% of
 headroom, across 39 tools. Nothing substantial can be exposed next without
 either raising that ceiling deliberately or trimming what is there, and the
 four bond tools are about 41,000 characters between them. The documentation site
@@ -505,10 +505,20 @@ always reported the aggregate volatility over it. Turning that into a quantile i
 the step the library refuses one period out, because the sum of the horizon's
 innovations is not a member of the family they were drawn from — so `paths` now
 runs the recursion forward instead and returns `horizonRisk` with a Monte Carlo
-error beside it. The substitution it replaces is wrong by 2.5, 11.0, 8.2 and 0.6
+error beside it. The substitution it replaces is wrong by 2.7, 12.3, 8.8 and 0.6
 standard errors on four samples: real on average, not decisive on any one series,
 because how far a horizon quantile departs from a scaled one depends on where the
 fit sits relative to its long-run level.
+
+Those gaps are against the **summed** accumulation, because the substitution is
+built out of the analytic horizon volatility, which is itself a statement about a
+sum. Against the compounded figure they are -0.6, +7.6, +4.8 and -3.8:
+substituting a scaled quantile overstates the loss and summing simple returns
+overstates it too, so a caller making both mistakes at once can land within one
+standard error of right for two wrong reasons. Which is why `convention` is an
+argument and `horizonRisk` returns both figures and the ratio between them —
+adding simple returns overstates the loss by 3.5% at ten periods and 20.6% at two
+hundred and fifty.
 
 Both square-root-of-time ratios come back, on the volatility and on the quantile,
 because they are different quantities and can sit on opposite sides of one. A
@@ -542,14 +552,14 @@ rather than as an example somebody copies and cannot make work.
 
 The same file checks that every tool the skill names is registered and every
 registered tool is named — a rename breaks the first, a new phase breaks the
-second — and enforces a budget on the tool listing, which is **138,286 characters today
-against a ceiling of 140,000** — 98.8% of it, with 1,714 left — and no single
+second — and enforces a budget on the tool listing, which is **138,605 characters today
+against a ceiling of 140,000** — 99.0% of it, with 1,395 left — and no single
 tool over 12,000. The listing is loaded before any work happens and grows with
 every group added, so the ceiling exists to make crossing it a decision rather
 than a drift.
 
 That decision is now due. The budget was 115,162 when the test was written and
-the headroom was about a fifth; it is 1.2% now, which is not enough for another
+the headroom was about a fifth; it is 1.0% now, which is not enough for another
 tool of any size. The four bond groups are about 41,000 characters between them,
 so the room exists if the schemas are trimmed; raising the ceiling is the other
 option. Until one or the other happens, the libraries page below keeps growing

@@ -470,3 +470,57 @@ the next build will see.
       test, so people update it without reading it until one day they stop.
       Bounded a quarter either way and counted by asking pytest
 
+
+## Phase 23 — A horizon figure the caller's convention agrees with
+
+- [x] `convention` on `conditional_volatility`, defaulting to simple
+- [x] Both accumulations in `horizonRisk`, with the ratio between them, the loss
+      ratio against square-root-of-time, and the count of paths compounded to ruin
+- [x] The accumulation check re-pointed at the summed volatility, which is the
+      one the analytic figure predicts
+- [x] The substituted-quantile comparison restated against the summed figure,
+      and the cancellation between the two errors asserted separately
+- [x] Called over the wire under both conventions, and with one the schema does
+      not know
+
+### What the phase is for
+
+`shortfall` accumulated a horizon path by adding the per-period returns, which
+is the horizon return of a log series and not of a simple one, and this tool
+called it on a bare list. The library now carries the convention of the series
+it was fitted on and compounds under the simple one, so the tool has to take a
+convention: a list of numbers over the wire says nothing about which it holds,
+and over a horizon the two are different arithmetic. Adding simple returns
+overstates the loss by 3.5% at ten periods and 20.6% at two hundred and fifty on
+a bundled equity series.
+
+Both figures are reported rather than one, because a caller handed only the
+compounded number has no way to tell whether the question existed.
+
+### The two errors point in opposite directions
+
+The substitution this tool's note has always warned against — multiplying the
+analytic horizon volatility by a one-step quantile — is built out of a quantity
+that is itself a statement about the sum, so the like-for-like comparison is
+against `summedValueAtRisk`. Over four samples at ten periods and 40,000 paths
+that gap came to 2.7, 12.3, 8.8 and 0.6 standard errors, positive on all four.
+
+Against the compounded figure the same gaps are -0.6, +7.6, +4.8 and -3.8:
+positive on two of four. Substituting a scaled quantile overstates the loss and
+summing simple returns overstates it too, so a caller making both mistakes at
+once can land within one standard error of the right answer for two wrong
+reasons. That cancellation is asserted on its own rather than left to be
+noticed, and it is why the existing test lost its sign when the library changed.
+
+The accumulation check had the same shape of blindness as the one in
+`shortfall`: at ten periods the compounded and summed volatilities sit within
+half a percent of each other against a 3% bound, so leaving that check pointed at
+the compounded figure would have left it passing while it stopped being a check
+on the accumulation.
+
+### What it cost
+
+319 characters of the tool listing, which leaves 1,395 of 140,000. The decision
+recorded in Phase 22 is still outstanding and is now tighter: at 1.0% of the
+budget there is no room for another group, and the four bond schemas remain the
+obvious place to find some.
