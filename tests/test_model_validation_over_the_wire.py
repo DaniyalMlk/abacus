@@ -635,6 +635,39 @@ def test_the_horizon_simulation_survives_the_round_trip(client: Client) -> None:
     assert "Infinity" not in json.dumps(payload)
 
 
+def test_the_horizon_convention_survives_the_round_trip(client: Client) -> None:
+    """Both accumulations and the ratio between them, over the transport.
+
+    The ratio is exactly one under the log convention, which is a claim about
+    there being one list of totals and one quantile rather than two numbers that
+    agree — so it has to survive serialisation as exactly one, not as 0.9999999.
+    """
+    data = garch_path(1200)
+    asked = {"returns": data, "horizon": 60, "paths": 10_000}
+    simple = succeed(client, "conditional_volatility", asked)["horizonRisk"]
+    logged = succeed(
+        client, "conditional_volatility", {**asked, "convention": "log"}
+    )["horizonRisk"]
+    assert simple["convention"] == "simple"
+    assert logged["convention"] == "log"
+    assert logged["compoundingFactor"] == 1.0
+    assert simple["compoundingFactor"] < 1.0
+    assert simple["valueAtRisk"] < simple["summedValueAtRisk"]
+    assert simple["summedValueAtRisk"] == logged["summedValueAtRisk"]
+    assert simple["ruinedPaths"] == 0
+
+
+def test_a_convention_outside_the_enum_is_a_recoverable_refusal(client: Client) -> None:
+    """A fixable mistake, named, rather than a protocol error."""
+    error = be_refused(
+        client,
+        "conditional_volatility",
+        {"returns": garch_path(400), "paths": 2_000, "convention": "geometric"},
+    )
+    assert "convention" in json.dumps(error)
+    assert "simple" in error["message"] and "log" in error["message"]
+
+
 def test_a_horizon_figure_is_absent_without_paths(client: Client) -> None:
     payload = succeed(client, "conditional_volatility", {"returns": garch_path(400)})
     assert "horizonRisk" not in payload

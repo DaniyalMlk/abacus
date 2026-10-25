@@ -1389,6 +1389,7 @@ class RiskTools:
                     paths=simulated_paths,
                     innovations=Innovations(str(args.get("draw", "bootstrap"))),
                     seed=int(args.get("seed", 0)),
+                    convention=Convention(str(args.get("convention", "simple"))),
                 )
             except (ValueError, TooShort) as bad:
                 raise DomainError(str(bad), field="paths") from bad
@@ -1396,18 +1397,29 @@ class RiskTools:
                 "paths": simulated.paths,
                 "draw": simulated.innovations.value,
                 "steps": simulated.steps,
+                "convention": simulated.convention.value,
                 "valueAtRisk": simulated.value_at_risk,
                 "expectedShortfall": simulated.expected_shortfall,
                 "standardError": simulated.standard_error,
                 "relativeStandardError": simulated.relative_standard_error,
                 "simulatedVolatility": simulated.simulated_volatility,
                 "analyticVolatility": simulated.analytic_volatility,
+                "additiveVolatility": simulated.additive_volatility,
                 "volatilityAgainstSquareRootOfTime": (
                     simulated.scaling_against_square_root_of_time
                 ),
                 "quantileAgainstSquareRootOfTime": (
                     simulated.quantile_against_square_root_of_time
                 ),
+                # The figure the arithmetic shortcut gives, and the ratio to it.
+                # Both are reported rather than one, because a caller handed only
+                # the compounded number has no way to tell whether the convention
+                # was the question or not.
+                "summedValueAtRisk": simulated.additive_risk.value_at_risk,
+                "summedExpectedShortfall": simulated.additive_risk.expected_shortfall,
+                "compoundingFactor": simulated.compounding_factor,
+                "lossAgainstSquareRootOfTime": simulated.loss_against_square_root_of_time,
+                "ruinedPaths": simulated.ruined_paths,
             }
         if include:
             payload["volatilityForecasts"] = list(fitted.volatilities)
@@ -1463,6 +1475,35 @@ class RiskTools:
             "towards normality and pushes it down. `standardError` is a LOWER "
             "bound on the Monte Carlo error; at 20,000 paths it measured 0.89 of "
             "the observed run-to-run spread.\n\n"
+            "A HORIZON RETURN HAS A CONVENTION and `returns` does not say which it "
+            "is, so `convention` does. Over one period it makes no difference at "
+            "all; over `horizon` periods it decides the arithmetic, because simple "
+            "returns compound and log returns add. `valueAtRisk` is in the "
+            "convention asked for and `summedValueAtRisk` is what adding the "
+            "periods would have given, with `compoundingFactor` the ratio — one "
+            "exactly under log, and below one under simple at every horizon past "
+            "the first, because compounding is gentler than addition in the loss "
+            "direction. Measured on a bundled equity series at 99%, adding simple "
+            "returns overstates the loss by 3.5% at ten periods and 20.6% at two "
+            "hundred and fifty. Do not try to repair a summed figure afterwards: "
+            "exponentiating it as though it were a log return closes about a third "
+            "of the gap, because of two paths with the same total the more jagged "
+            "one compounds to the larger loss, so the ranks change and the "
+            "quantile does not carry through.\n\n"
+            "`volatilityAgainstSquareRootOfTime` and "
+            "`quantileAgainstSquareRootOfTime` are both statements about the SUM, "
+            "because scaling a one-period volatility by the square root of the "
+            "horizon is arithmetic about a sum. `lossAgainstSquareRootOfTime` is "
+            "the one in the convention asked for, and the two effects can hide "
+            "each other: at ten periods the variance path puts the summed ratio "
+            "near 1.04 and compounding multiplies it by about 0.97, so the rule "
+            "looks nearly right for two reasons that are each wrong by about the "
+            "same amount. `additiveVolatility` is the one `analyticVolatility` "
+            "predicts; under simple returns `simulatedVolatility` has no closed "
+            "form to be checked against, since the variance of a product is not "
+            "the sum of the variances. `ruinedPaths` counts paths whose compounded "
+            "value reached zero, where the horizon return floors at -1 rather than "
+            "changing sign; non-zero means the quantile is on a boundary.\n\n"
             "What estimating the tail buys, measured on regime-switching series: "
             "the 99% breach count over 2000 observations falls from 28.2 to 22.45 "
             "against a nominal 20, so about 70% of the excess a Gaussian GARCH "
@@ -2070,6 +2111,17 @@ class RiskTools:
                             "Defaults to 0 rather than to randomness, because a tool "
                             "annotated idempotent that is not is worse than one that "
                             "admits it."
+                        ),
+                    },
+                    "convention": {
+                        "type": "string",
+                        "enum": ["simple", "log"],
+                        "description": (
+                            "Whether `returns` are simple or log returns. Irrelevant "
+                            "to the fit and to a one-period figure, decisive over a "
+                            "horizon: simple returns compound and log returns add. "
+                            "Defaults to simple. `horizonRisk` reports both and the "
+                            "ratio between them."
                         ),
                     },
                 },
