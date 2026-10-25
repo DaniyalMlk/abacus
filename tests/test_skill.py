@@ -35,7 +35,7 @@ SKILL = Path(__file__).resolve().parent.parent / "skill" / "SKILL.md"
 
 #: Ceiling on the whole tool listing, serialised as JSON, in characters.
 #: Measured at 115,162 when this was written, when the headroom was about a
-#: fifth. It is 138,286 now -- 98.8% of the budget, 1,714 characters left --
+#: fifth. It is 138,605 now -- 99.0% of the budget, 1,395 characters left --
 #: which is not room for another tool of any size. Trimming the four bond
 #: groups, about 41,000 characters between them, or raising the ceiling, are
 #: both decisions rather than maintenance, so neither is taken here.

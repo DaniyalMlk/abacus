@@ -221,13 +221,16 @@ CLAIMS: tuple[Claim, ...] = (
         test="test_the_note_refuses_the_flattering_summary",
     ),
     Claim(
-        figure="2.5, 11.0, 8.2 and 0.6",
+        figure="2.7, 12.3, 8.8 and 0.6",
         about=(
-            "The gap between the simulated horizon value at risk and the "
+            "The gap between the SUMMED horizon value at risk and the "
             "substitution it replaces — the horizon volatility times the one-step "
-            "quantile multiplier — in units of the simulation's own standard "
-            "error, over four samples. Quoted to say that the gap is real on "
-            "average and not decisive on every series."
+            "quantile multiplier, which is itself a statement about a sum — in "
+            "units of the simulation's own standard error, over four samples. "
+            "Quoted to say that the gap is real on average and not decisive on "
+            "every series. Against the compounded figure the same gaps are -0.6, "
+            "+7.6, +4.8 and -3.8, because substituting a scaled quantile and "
+            "summing simple returns are errors in opposite directions."
         ),
         module="tests/test_model_validation.py",
         test="test_the_horizon_quantile_is_not_the_volatility_times_a_multiplier",

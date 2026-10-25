@@ -18,7 +18,7 @@ suite on the commit that moved it.
 
 One direction is deliberately not attempted. Scanning the README for a number
 and comparing it to the measurement cannot tell which number it found: this page
-carries 138,286 and 140,000 within a few characters of each other, and a check
+carries 138,605 and 140,000 within a few characters of each other, and a check
 looking for "some number near here" can pass against the wrong one. The forward
 direction plus the row labels catches a figure that moved and a row that
 vanished, which is what matters.
@@ -57,7 +57,7 @@ def _load_gate() -> Any:
 QUOTED = (
     "delta, vega and gamma all within 6e-10, from different formulae",
     "19 of 29 pass, the other 10 needing a real HTTP endpoint; revision 2026-07-28",
-    "138,286 of 140,000 characters across 39 tools, 1,714 left",
+    "138,605 of 140,000 characters across 39 tools, 1,395 left",
     "56 capabilities across 5 libraries",
 )
 
@@ -131,7 +131,7 @@ def test_the_listing_budget_is_one_number_written_in_three_places(gate: Any) -> 
 
 
 def test_the_headroom_is_the_difference_the_readme_states(gate: Any) -> None:
-    """1,714 characters, and it is a subtraction rather than a second figure.
+    """1,395 characters, and it is a subtraction rather than a second figure.
 
     The README treats the headroom as the reason nothing substantial can be
     exposed next, so it has to be the ceiling less the listing and not a number
@@ -140,7 +140,7 @@ def test_the_headroom_is_the_difference_the_readme_states(gate: Any) -> None:
     figures = gate.measure()
     assert figures.listing_headroom == figures.listing_budget - figures.listing_characters
     assert f"{figures.listing_headroom:,} left" in README
-    assert "1.2% of" in README
+    assert "1.0% of" in README
 
 
 def test_the_tolerance_catches_what_the_readme_says_it_catches(gate: Any) -> None:
