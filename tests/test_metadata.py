@@ -99,7 +99,13 @@ def test_every_runtime_dependency_is_bounded_at_both_ends() -> None:
     # Named for the distribution, not the module: `slippage` on the index is an
     # unrelated project, so the library that `import slippage` reaches publishes
     # as `slippage-tca`, and a requirement is a distribution name.
-    expected = {"moneyness", "shortfall", "tenor", "slippage-tca", "holdout-backtest"}
+    expected = {
+        "moneyness",
+        "shortfall",
+        "tenor-curves",
+        "slippage-tca",
+        "holdout-backtest",
+    }
     assert set(runtime) == expected, runtime
     for name, requirement in runtime.items():
         assert ">=0.1" in requirement, name

@@ -239,7 +239,7 @@ LIBRARIES: tuple[Library, ...] = (
         plumbing=("cli", "series"),
     ),
     Library(
-        distribution="tenor",
+        distribution="tenor-curves",
         importable="tenor",
         capabilities=(
             Capability(
