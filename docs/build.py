@@ -45,16 +45,6 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "site"
 SOURCE = "https://github.com/DaniyalMlk/abacus"
 
-#: The from-source install, for as long as nothing is on the package index. The
-#: shell line-continuations are joined here rather than written as a literal
-#: block: this module is Python source, and a backslash before a newline inside
-#: a string literal is a line continuation that silently removes both.
-_LIBRARIES = tuple(library.importable for library in LIBRARIES)
-FROM_SOURCE = " \\\n  ".join(
-    ["pip install"] + [f'"git+{SOURCE.rsplit("/", 1)[0]}/{name}.git"' for name in _LIBRARIES]
-) + f'\npip install "git+{SOURCE}.git"'
-
-
 @dataclass(frozen=True)
 class Group:
     """One family of tools, and the sentence that says when to reach for it."""
@@ -312,21 +302,19 @@ cannot be.</p>
 </div>
 
 <h2>The first minute</h2>
-<p>The server and its five libraries are not on the package index yet, so today
-it installs from source. Both halves of that are one command, and nothing has to
-be resolved by name once the libraries are in place:</p>
-<pre><code>{FROM_SOURCE}
+<p>One command, which brings the five libraries with it:</p>
+<pre><code>pip install abacus-mcp
 
 abacus tools          # what it can do
 abacus stdio          # serve over stdio
 </code></pre>
 
 <div class="note">
-<p><strong>After the first release</strong> the whole thing becomes
-<code>pip install abacus-mcp</code>, or <code>uvx abacus-mcp stdio</code> with no
-install at all. This page will say so when that is true rather than before
-&mdash; a documented command that does not work is worse than an undocumented
-one, because it fails in the reader's terminal rather than on the page.</p>
+<p><strong>Or nothing at all.</strong> <code>uvx abacus-mcp stdio</code> fetches
+it, runs it and caches it, which is the shortest path from reading this page to
+a client talking to the server. This page said it would print that line when it
+worked rather than before, because a documented command that fails does so in
+the reader's terminal rather than on the page. It works now.</p>
 </div>
 
 <p>Registering it with a client means one entry naming that command. The
