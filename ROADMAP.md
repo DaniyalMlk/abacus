@@ -524,3 +524,47 @@ on the accumulation.
 recorded in Phase 22 is still outstanding and is now tighter: at 1.0% of the
 budget there is no room for another group, and the four bond schemas remain the
 obvious place to find some.
+
+## Phase 24 — Options nobody had chosen
+
+A documented parameter with a default is a claim: that the caller may choose,
+and that choosing works. Six parameters here had never been supplied by any
+call site, so each only ever ran with the value its author picked.
+
+- [x] The scenario grid's two axes each explaining their own convention when
+      they refuse a value. They shared one sentence — "shifts are decimal
+      fractions: ten percent is 0.1, not 10" — which is the spot axis's
+      convention. A volatility shift is a number of volatility points added to
+      each leg and floored at zero, as the tool's own schema says, so the
+      shared sentence told a caller who wrote ten meaning ten points that they
+      meant ten percent of something
+- [x] Why that matters more here than in a library written down: the reader is a
+      model and the message is the whole of its recovery instruction, and the
+      repair this one suggested landed on the right digits for the wrong reason
+- [x] The volatility shift pinned as absolute rather than relative — the same
+      number of points at a volatility of 0.05, 0.20 and 0.80 — and tied to the
+      vega the same call reports by finite difference, which is the check a
+      factor of a hundred in the units fails
+- [x] The floor at zero volatility pinned as documented behaviour rather than
+      removed: taking a 15-vol option down twenty points is a scenario, and the
+      answer there is the discounted intrinsic
+- [x] Both capability flags pinned as the difference between omitted and empty,
+      with the handshake asserted to advertise tools and neither resources nor
+      prompts — a declaration is a promise to answer the matching requests
+- [x] The conformance subset pinned as exactly the checks given, the empty one
+      included, where `ok` means nothing failed and the rendered line states the
+      count
+- [x] The probe made a gate, with no exemption mechanism, counting positional
+      arguments as choices
+- [x] Eleven ways of breaking it confirmed to fail first, the gate among them
+
+Found while writing the wire tests, and pinned rather than left to be
+rediscovered: `_shift_axis`'s refusals are unreachable through the protocol.
+The schema's bounds are the same numbers as the handler's limits, its `minItems`
+covers the empty array, its `type` covers a non-number, and JSON cannot carry a
+NaN, so schema validation answers first in every case and only a Python caller
+reads the handler's message. That makes the schema description the one place a
+convention reaches a model, which is where both axes already state theirs. What
+the out-of-range message cannot carry is the unit it was measured in: giving it
+one costs either listing budget on the description or a per-field hint channel
+the registry does not have, and the budget is not this phase's to spend.
