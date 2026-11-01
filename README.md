@@ -792,7 +792,7 @@ endpoint that was never there.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 880 tests
+pytest          # 911 tests
 mypy --strict
 ruff check .
 ```
