@@ -524,6 +524,30 @@ _OPEN_SCHEMA = {
 }
 
 
+#: How to write a shift on each axis of the scenario grid, in the words the
+#: caller gets back when they write one the axis cannot take.
+#:
+#: One sentence per axis rather than one shared sentence, because the two axes
+#: do not share a convention: a spot shift is relative to the current spot and a
+#: volatility shift is an absolute number of volatility points added to each
+#: leg. They were sharing "shifts are decimal fractions: ten percent is 0.1",
+#: which is the spot axis's convention and is not true of the other one -- the
+#: volatility axis is not a percentage of anything. The repair that sentence
+#: suggests lands on the right digits for the wrong reason, which is worse than
+#: no reason when the reader is a model that will apply the reasoning again.
+_AXIS_CONVENTION = {
+    "spotShifts": (
+        "A spot shift is relative to the current spot, as a decimal fraction: "
+        "ten percent is 0.1, not 10."
+    ),
+    "volShifts": (
+        "A volatility shift is a number of volatility points added to every "
+        "option leg, as a decimal: five points is 0.05, not 5. It is not "
+        "relative to the leg's own volatility."
+    ),
+}
+
+
 def _shift_axis(
     raw: Any, *, name: str, default: tuple[float, ...], limit: float
 ) -> list[float]:
@@ -532,6 +556,7 @@ def _shift_axis(
         return list(default)
     if not isinstance(raw, list) or not raw:
         raise DomainError(f"{name} must be a non-empty array of numbers", field=name)
+    convention = _AXIS_CONVENTION[name]
     values: list[float] = []
     for item in raw:
         if not isinstance(item, int | float) or isinstance(item, bool):
@@ -541,7 +566,7 @@ def _shift_axis(
         if abs(item) > limit:
             raise DomainError(
                 f"{name} contains {item:g}, beyond the ±{limit:g} this tool accepts. "
-                "Shifts are decimal fractions: ten percent is 0.1, not 10.",
+                f"{convention}",
                 field=name,
             )
         values.append(float(item))
