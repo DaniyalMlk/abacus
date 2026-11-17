@@ -41,7 +41,6 @@ from typing import Any
 
 from moneyness import (
     SVI,
-    Method,
     OptionType,
     Quote,
     Surface,
@@ -76,7 +75,7 @@ def log_moneyness_on_forward(strike: float, forward: float) -> float:
 # -- implied volatility ---------------------------------------------------
 
 
-def implied_payload(args: dict[str, Any]) -> dict[str, Any]:
+def _implied_payload(args: dict[str, Any]) -> dict[str, Any]:
     quote: Quote = build_quote(args)
     option = OptionType(args["type"])
 
@@ -170,7 +169,7 @@ def _butterfly_report(slice_: SVI, time: float) -> dict[str, Any]:
     }
 
 
-def fit_slice_payload(args: dict[str, Any]) -> dict[str, Any]:
+def _fit_slice_payload(args: dict[str, Any]) -> dict[str, Any]:
     quotes = args["quotes"]
     time = float(args["time"])
     forward = float(args["forward"])
@@ -285,7 +284,7 @@ def _labelled_grid(
     return grid
 
 
-def surface_payload(args: dict[str, Any]) -> dict[str, Any]:
+def _surface_payload(args: dict[str, Any]) -> dict[str, Any]:
     entries = args["slices"]
     times = [float(entry["time"]) for entry in entries]
     if len(set(times)) != len(times):
@@ -303,7 +302,7 @@ def surface_payload(args: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def local_vol_payload(args: dict[str, Any]) -> dict[str, Any]:
+def _local_vol_payload(args: dict[str, Any]) -> dict[str, Any]:
     surface, described = _build_surface(args)
     points: list[dict[str, Any]] = []
     for ratio in args["strikeRatios"]:
@@ -418,7 +417,7 @@ def register(registry: ToolRegistry) -> ToolRegistry:
             "additionalProperties": False,
         },
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(guard(implied_payload))
+    )(guard(_implied_payload))
 
     registry.register(
         "fit_volatility_slice",
@@ -441,7 +440,7 @@ def register(registry: ToolRegistry) -> ToolRegistry:
             "additionalProperties": False,
         },
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(guard(fit_slice_payload))
+    )(guard(_fit_slice_payload))
 
     registry.register(
         "fit_volatility_surface",
@@ -467,7 +466,7 @@ def register(registry: ToolRegistry) -> ToolRegistry:
             "additionalProperties": False,
         },
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(guard(surface_payload))
+    )(guard(_surface_payload))
 
     registry.register(
         "local_volatility",
@@ -495,14 +494,13 @@ def register(registry: ToolRegistry) -> ToolRegistry:
             "additionalProperties": False,
         },
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(guard(local_vol_payload))
+    )(guard(_local_vol_payload))
 
     return registry
 
 
 __all__ = [
     "SCAN_WING",
-    "Method",
     "forward_of",
     "log_moneyness_on_forward",
     "register",

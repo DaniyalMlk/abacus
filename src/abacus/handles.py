@@ -290,6 +290,7 @@ class Minter:
 __all__ = [
     "DEFAULT_TTL_S",
     "HANDLE_VERSION",
+    "MAC_BYTES",
     "MAX_HANDLE_CHARS",
     "HandleError",
     "HandleExpired",

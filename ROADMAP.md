@@ -568,3 +568,26 @@ convention reaches a model, which is where both axes already state theirs. What
 the out-of-range message cannot carry is the unit it was measured in: giving it
 one costs either listing budget on the description or a per-field hint channel
 the registry does not have, and the budget is not this phase's to spend.
+
+## Phase 25 — Every module says what it makes public
+
+- [x] `errors` and `protocol` declare what they define. The root takes 28 of its
+      31 names from them, and with no `__all__` in either the root was the only
+      statement anywhere that those names were public
+- [x] `analytics`, `schema`, `tools`, `cli` and both transports declare too, and
+      four modules that already declared stop leaving names out — among them
+      `conformance.expect` and its three siblings, which a caller writing their
+      own `Check` for `run(checks=...)` reports a failure with
+- [x] Twelve tool bodies in `american`, `analytics` and `vol` made private
+      rather than declared: each is reached only through the registry, as the
+      other tool modules' payloads are by being methods of their `*Tools` class
+- [x] `vol`'s re-export of `moneyness.Method` dropped: imported, declared, and
+      read by nothing
+- [x] `tests/test_surface.py`, a gate shaped for a curated root rather than the
+      siblings' equality: every module declares in full; a declaration names
+      only what its module defines or a pinned re-export; every root name has
+      exactly one defining owner; every public cross-module import names a
+      declared name — 68 distinct names on main did not; and a root-reachable
+      signature is written in root types, private dataclass fields excepted
+- [x] Both `ast` probes tested against source written for them. On main five of
+      twelve checks fail, and six single-rule breaks are each caught

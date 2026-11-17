@@ -2248,6 +2248,9 @@ def register(registry: ToolRegistry, *, minter: Minter | None = None) -> ToolReg
 __all__ = [
     "MAX_ASSETS",
     "MAX_CONFIDENCE",
+    "MAX_FORECASTS",
+    "MAX_FORECAST_SERIES",
+    "MAX_REPLICATIONS",
     "MAX_RETURN_CELLS",
     "MIN_OBSERVATIONS",
     "MOMENTS_KIND",

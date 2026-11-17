@@ -858,7 +858,9 @@ def run(
 
 
 __all__ = [
+    "CACHE_SCOPES",
     "CHECKS",
+    "RESULT_TYPES",
     "Check",
     "Context",
     "Failure",
@@ -868,5 +870,9 @@ __all__ = [
     "check_cache_hints",
     "check_error_code_policy",
     "check_result_envelope",
+    "expect",
+    "expect_code",
+    "expect_error",
+    "expect_result",
     "run",
 ]

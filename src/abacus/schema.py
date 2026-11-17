@@ -389,3 +389,11 @@ def _is_valid(value: Any, schema: Any, root: dict[str, Any], depth: int) -> bool
     probe: list[Violation] = []
     _validate(value, schema, "", root, probe, depth)
     return not probe
+
+
+__all__ = [
+    "MAX_DEPTH",
+    "SchemaError",
+    "Violation",
+    "validate",
+]
