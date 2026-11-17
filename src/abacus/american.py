@@ -52,7 +52,7 @@ def _lattice_of(args: dict[str, Any]) -> Lattice:
     return Lattice(args.get("lattice", "crr"))
 
 
-def lattice_payload(args: dict[str, Any]) -> dict[str, Any]:
+def _lattice_payload(args: dict[str, Any]) -> dict[str, Any]:
     inputs = build_inputs(args)
     option = OptionType(args["type"])
     lattice = _lattice_of(args)
@@ -145,7 +145,7 @@ def _convergence(
     return report
 
 
-def approximation_payload(args: dict[str, Any]) -> dict[str, Any]:
+def _approximation_payload(args: dict[str, Any]) -> dict[str, Any]:
     inputs = build_inputs(args)
     option = OptionType(args["type"])
     european = price(inputs, option)
@@ -170,7 +170,7 @@ def approximation_payload(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def boundary_payload(args: dict[str, Any]) -> dict[str, Any]:
+def _boundary_payload(args: dict[str, Any]) -> dict[str, Any]:
     inputs = build_inputs(args)
     option = OptionType(args["type"])
     lattice = _lattice_of(args)
@@ -295,7 +295,7 @@ def register(registry: ToolRegistry) -> ToolRegistry:
             },
         ),
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(guard(lattice_payload))
+    )(guard(_lattice_payload))
 
     registry.register(
         "price_american_closed_form",
@@ -308,7 +308,7 @@ def register(registry: ToolRegistry) -> ToolRegistry:
         ),
         input_schema=_american_schema(),
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(guard(approximation_payload))
+    )(guard(_approximation_payload))
 
     registry.register(
         "american_exercise_boundary",
@@ -331,7 +331,7 @@ def register(registry: ToolRegistry) -> ToolRegistry:
             },
         ),
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(guard(boundary_payload))
+    )(guard(_boundary_payload))
 
     return registry
 

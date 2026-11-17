@@ -238,7 +238,7 @@ _GREEKS_OUTPUT = {
 }
 
 
-def price_payload(args: dict[str, Any]) -> dict[str, Any]:
+def _price_payload(args: dict[str, Any]) -> dict[str, Any]:
     inputs = build_inputs(args)
     option = option_type(args)
     value = price(inputs, option)
@@ -263,7 +263,7 @@ def price_payload(args: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def greeks_payload(args: dict[str, Any]) -> dict[str, Any]:
+def _greeks_payload(args: dict[str, Any]) -> dict[str, Any]:
     inputs = build_inputs(args)
     option = option_type(args)
     if inputs.is_degenerate:
@@ -298,17 +298,17 @@ def greeks_payload(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def analytics_payload(args: dict[str, Any]) -> dict[str, Any]:
+def _analytics_payload(args: dict[str, Any]) -> dict[str, Any]:
     """Price and Greeks together.
 
     Offered as one tool as well as two because a model asking for a price
     usually wants the sensitivities in the same breath, and a round trip it does
     not have to make is a round trip it cannot get wrong.
     """
-    return {**price_payload(args), "greeks": greeks_payload(args)}
+    return {**_price_payload(args), "greeks": _greeks_payload(args)}
 
 
-def parity_payload(args: dict[str, Any]) -> dict[str, Any]:
+def _parity_payload(args: dict[str, Any]) -> dict[str, Any]:
     inputs = build_inputs(args)
     call_price = price(inputs, OptionType.CALL)
     put_price = price(inputs, OptionType.PUT)
@@ -322,7 +322,7 @@ def parity_payload(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def bounds_payload(args: dict[str, Any]) -> dict[str, Any]:
+def _bounds_payload(args: dict[str, Any]) -> dict[str, Any]:
     quote = build_quote(args)
     option = option_type(args)
     limits = bounds(quote, option)
@@ -387,7 +387,7 @@ def register(registry: ToolRegistry) -> ToolRegistry:
         input_schema=_option_schema(),
         output_schema=_PRICE_OUTPUT,
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(guard(price_payload))
+    )(guard(_price_payload))
 
     registry.register(
         "european_option_greeks",
@@ -402,7 +402,7 @@ def register(registry: ToolRegistry) -> ToolRegistry:
         input_schema=_option_schema(),
         output_schema=_GREEKS_OUTPUT,
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(guard(greeks_payload))
+    )(guard(_greeks_payload))
 
     registry.register(
         "european_option_analytics",
@@ -413,7 +413,7 @@ def register(registry: ToolRegistry) -> ToolRegistry:
         ),
         input_schema=_option_schema(),
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(guard(analytics_payload))
+    )(guard(_analytics_payload))
 
     registry.register(
         "put_call_parity",
@@ -425,7 +425,7 @@ def register(registry: ToolRegistry) -> ToolRegistry:
         ),
         input_schema=_option_schema(with_type=False),
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(guard(parity_payload))
+    )(guard(_parity_payload))
 
     quote_schema = _option_schema()
     quote_properties = dict(quote_schema["properties"])
@@ -451,7 +451,7 @@ def register(registry: ToolRegistry) -> ToolRegistry:
             "additionalProperties": False,
         },
         annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False},
-    )(guard(bounds_payload))
+    )(guard(_bounds_payload))
 
     return registry
 
