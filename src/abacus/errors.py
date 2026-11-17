@@ -184,3 +184,28 @@ class UnsupportedProtocolVersionError(ProtocolError):
         )
         self.requested = requested
         self.supported = supported
+
+
+__all__ = [
+    "HEADER_MISMATCH",
+    "INTERNAL_ERROR",
+    "INVALID_PARAMS",
+    "INVALID_REQUEST",
+    "METHOD_NOT_FOUND",
+    "MISSING_REQUIRED_CLIENT_CAPABILITY",
+    "PARSE_ERROR",
+    "RESERVED_RANGE",
+    "RETIRED_CODES",
+    "SPEC_DEFINED_CODES",
+    "UNSUPPORTED_PROTOCOL_VERSION",
+    "HeaderMismatchError",
+    "InternalError",
+    "InvalidParams",
+    "InvalidRequest",
+    "MethodNotFound",
+    "MissingRequiredClientCapabilityError",
+    "ParseError",
+    "ProtocolError",
+    "UnsupportedProtocolVersionError",
+    "is_reserved",
+]
