@@ -41,3 +41,8 @@ def serve_stdio(
             continue
         sink.write(json.dumps(response, separators=(",", ":")) + "\n")
         sink.flush()
+
+
+__all__ = [
+    "serve_stdio",
+]
