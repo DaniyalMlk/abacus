@@ -41,7 +41,6 @@ from typing import Any
 
 from moneyness import (
     SVI,
-    Method,
     OptionType,
     Quote,
     Surface,
@@ -502,7 +501,6 @@ def register(registry: ToolRegistry) -> ToolRegistry:
 
 __all__ = [
     "SCAN_WING",
-    "Method",
     "forward_of",
     "log_moneyness_on_forward",
     "register",
