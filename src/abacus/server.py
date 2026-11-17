@@ -230,10 +230,12 @@ def capabilities(
 
 
 __all__ = [
+    "DISCOVER_TTL_MS",
     "Capabilities",
     "Handler",
     "InvalidRequest",
     "Method",
+    "NotificationHandler",
     "Server",
     "capabilities",
 ]
