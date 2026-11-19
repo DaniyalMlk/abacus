@@ -591,3 +591,17 @@ the registry does not have, and the budget is not this phase's to spend.
       signature is written in root types, private dataclass fields excepted
 - [x] Both `ast` probes tested against source written for them. On main five of
       twelve checks fail, and six single-rule breaks are each caught
+
+## Phase 26 — The roadmap is read
+
+Phase 8's first-release item stayed open after `abacus-mcp` 0.1.0 and the five
+libraries under it were on the index, because nothing read the roadmap.
+
+- [x] The release recorded under phase 8, and pinned as recorded, since a
+      published version is permanent
+- [x] No open item allowed to mention a release, however worded
+- [x] The numbering held to no duplicate, no gap and no descent
+- [x] Every cross-reference naming a phase that exists and pointing backwards,
+      unless it is a note saying where a deferred item was settled
+- [x] `main`'s roadmap and a duplicated phase number each confirmed to fail
+      first

@@ -131,7 +131,12 @@ def test_every_reference_points_backwards_or_is_a_resolution_note(roadmap: str) 
 
 def test_the_probe_reads_the_references_that_are_there(roadmap: str) -> None:
     """Both reference rules pass vacuously if the pattern stops matching."""
-    assert cross_references(roadmap) == [(20, 19, False), (23, 22, False)]
+    assert cross_references(roadmap) == [
+        (20, 19, False),
+        (23, 22, False),
+        (26, 8, False),
+        (26, 8, False),
+    ]
 
 
 # --- the rules against text built for them -------------------------------- #
