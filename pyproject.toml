@@ -76,8 +76,9 @@ abacus = "abacus.cli:main"
 abacus-mcp = "abacus.cli:main"
 
 [project.optional-dependencies]
-# The server itself depends only on moneyness, which in turn has no
-# dependencies. Everything below is for checking the code, not running it.
+# The server depends on the five libraries it exposes, listed above; numpy
+# arrives through slippage-tca and holdout-backtest. Everything below is for
+# checking the code, not running it.
 dev = ["pytest>=8", "mypy>=1.8", "ruff>=0.4"]
 
 [tool.setuptools.packages.find]

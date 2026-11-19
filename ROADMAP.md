@@ -603,5 +603,8 @@ libraries under it were on the index, because nothing read the roadmap.
 - [x] The numbering held to no duplicate, no gap and no descent
 - [x] Every cross-reference naming a phase that exists and pointing backwards,
       unless it is a note saying where a deferred item was settled
+- [x] The comment over the development extras in `pyproject.toml` saying the
+      server depends on the five libraries it exposes, not on `moneyness`
+      alone, which stopped being true four libraries ago
 - [x] `main`'s roadmap and a duplicated phase number each confirmed to fail
       first
