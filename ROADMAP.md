@@ -73,8 +73,8 @@ exercised end to end, and covered by tests that run.
       environment, resolving the dependency by name against a wheelhouse standing
       in for the index, and passing conformance from both the wheel and the sdist
 - [x] Registration snippets for the clients people actually use
-- [ ] A first release on the index, which waits on the publisher being registered
-      there for this project and for the library it depends on
+- [x] A first release on the index: `abacus-mcp` 0.1.0, wheel and sdist, with
+      the five libraries it depends on published at 0.1.0 beside it
 
 ## Phase 9 — Portfolio risk tools
 
