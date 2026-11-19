@@ -73,8 +73,8 @@ exercised end to end, and covered by tests that run.
       environment, resolving the dependency by name against a wheelhouse standing
       in for the index, and passing conformance from both the wheel and the sdist
 - [x] Registration snippets for the clients people actually use
-- [ ] A first release on the index, which waits on the publisher being registered
-      there for this project and for the library it depends on
+- [x] A first release on the index: `abacus-mcp` 0.1.0, wheel and sdist, with
+      the five libraries it depends on published at 0.1.0 beside it
 
 ## Phase 9 — Portfolio risk tools
 
@@ -591,3 +591,20 @@ the registry does not have, and the budget is not this phase's to spend.
       signature is written in root types, private dataclass fields excepted
 - [x] Both `ast` probes tested against source written for them. On main five of
       twelve checks fail, and six single-rule breaks are each caught
+
+## Phase 26 — The roadmap is read
+
+Phase 8's first-release item stayed open after `abacus-mcp` 0.1.0 and the five
+libraries under it were on the index, because nothing read the roadmap.
+
+- [x] The release recorded under phase 8, and pinned as recorded, since a
+      published version is permanent
+- [x] No open item allowed to mention a release, however worded
+- [x] The numbering held to no duplicate, no gap and no descent
+- [x] Every cross-reference naming a phase that exists and pointing backwards,
+      unless it is a note saying where a deferred item was settled
+- [x] The comment over the development extras in `pyproject.toml` saying the
+      server depends on the five libraries it exposes, not on `moneyness`
+      alone, which stopped being true four libraries ago
+- [x] `main`'s roadmap and a duplicated phase number each confirmed to fail
+      first
