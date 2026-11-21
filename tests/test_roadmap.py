@@ -136,6 +136,7 @@ def test_the_probe_reads_the_references_that_are_there(roadmap: str) -> None:
         (23, 22, False),
         (26, 8, False),
         (26, 8, False),
+        (28, 27, False),
     ]
 
 

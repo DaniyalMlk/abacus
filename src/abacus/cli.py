@@ -20,6 +20,7 @@ from . import __version__
 from .analytics import default_registry
 from .client import Client, HttpTransport, InProcessTransport, StdioTransport, Transport
 from .conformance import run as run_conformance
+from .handles import BadHandleKey, Minter, key_from_environment
 from .protocol import PROTOCOL_VERSION
 from .server import Server, capabilities
 from .tools import ToolRegistry, install
@@ -49,8 +50,15 @@ INSTRUCTIONS = (
 )
 
 
-def build_server(registry: ToolRegistry | None = None) -> Server:
-    """Assemble the server with its tools installed."""
+def build_server(
+    registry: ToolRegistry | None = None, *, minter: Minter | None = None
+) -> Server:
+    """Assemble the server with its tools installed.
+
+    ``minter`` signs every handle the server issues; omitted, the server draws
+    a key of its own. It is ignored when a ``registry`` is supplied, since the
+    registry's tools are already bound to theirs.
+    """
     server = Server(
         name="abacus",
         version=__version__,
@@ -61,7 +69,7 @@ def build_server(registry: ToolRegistry | None = None) -> Server:
         # would never carry anything.
         capabilities=capabilities(tools={"listChanged": False}),
     )
-    install(server, registry if registry is not None else default_registry())
+    install(server, registry if registry is not None else default_registry(minter=minter))
     return server
 
 
@@ -147,7 +155,18 @@ def _conform(args: argparse.Namespace) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    server = build_server()
+
+    if args.command in ("stdio", "http"):
+        # Read before anything is served, so a bad key stops the server rather
+        # than leaving it running on a private key that looks like it worked.
+        try:
+            key = key_from_environment()
+        except BadHandleKey as exc:
+            print(f"abacus: {exc}", file=sys.stderr)
+            return 2
+        server = build_server(minter=None if key is None else Minter(key=key))
+    else:
+        server = build_server()
 
     if args.command == "stdio":
         serve_stdio(server)

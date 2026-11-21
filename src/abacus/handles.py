@@ -43,10 +43,14 @@ design rather than in a footnote:
 - The handle is bounded in size, and therefore so is the book. A book that will
   not fit is refused when it is opened, naming the limit, rather than minting
   something that fails on use.
-- The key lives for the life of the process. A restart invalidates every
-  outstanding handle, which is why "not recognised" is reported separately from
-  "expired": the caller's recovery is the same, but a caller that sees the first
-  after a working call has learned something true about the server.
+- By default the key lives for the life of the process. A restart invalidates
+  every outstanding handle, which is why "not recognised" is reported separately
+  from "expired": the caller's recovery is the same, but a caller that sees the
+  first after a working call has learned something true about the server.
+- A deployment that runs more than one process, or restarts one, gives every
+  process the same key through ``ABACUS_HANDLE_KEY``. Then a handle minted by
+  one worker is redeemed by the next, which is the property that made carrying
+  the book inside the handle worth doing in the first place.
 """
 
 from __future__ import annotations
@@ -56,9 +60,11 @@ import binascii
 import hashlib
 import hmac
 import json
+import os
 import secrets
 import time
 import zlib
+from collections.abc import Mapping
 from typing import Any, Final
 
 #: Version tag on every handle. It is inside the authenticated payload as well
@@ -84,6 +90,68 @@ MAX_HANDLE_CHARS: Final = 8192
 MAC_BYTES: Final = 16
 
 _SEPARATOR: Final = "."
+
+#: The environment variable a shared key is read from, as hexadecimal.
+KEY_VARIABLE: Final = "ABACUS_HANDLE_KEY"
+
+#: Shortest key accepted, in bytes. The MAC is HMAC-SHA256, whose key is
+#: as strong as its entropy up to the hash's own block; thirty-two random bytes
+#: is the size the server draws for itself, and a shared key should not be the
+#: weaker of the two.
+MIN_KEY_BYTES: Final = 32
+
+_GENERATE: Final = "python -c 'import secrets; print(secrets.token_hex(32))'"
+
+
+class BadHandleKey(ValueError):
+    """A shared key was supplied and cannot be used.
+
+    The message describes the key's shape and never the key, because it is
+    printed to a terminal and lands in whatever collects the server's logs.
+    """
+
+
+def parse_key(text: str) -> bytes:
+    """Read a shared handle key written as hexadecimal.
+
+    Surrounding whitespace is ignored, since a key copied from a file usually
+    carries a newline. Anything else that is not a hex digit is refused, as is a
+    key shorter than :data:`MIN_KEY_BYTES`.
+    """
+    stripped = text.strip()
+    if not stripped:
+        raise BadHandleKey(
+            f"{KEY_VARIABLE} is set but empty. Unset it to have the server draw "
+            f"its own key, or set it to {MIN_KEY_BYTES * 2} hex digits: {_GENERATE}"
+        )
+    try:
+        raw = bytes.fromhex(stripped)
+    except ValueError:
+        raise BadHandleKey(
+            f"{KEY_VARIABLE} must be hexadecimal, and the {len(stripped)} characters "
+            f"it holds are not all hex digits. Generate one with: {_GENERATE}"
+        ) from None
+    if len(raw) < MIN_KEY_BYTES:
+        raise BadHandleKey(
+            f"{KEY_VARIABLE} holds a {len(raw)}-byte key; it must be at least "
+            f"{MIN_KEY_BYTES} bytes, which is {MIN_KEY_BYTES * 2} hex digits. "
+            f"Generate one with: {_GENERATE}"
+        )
+    return raw
+
+
+def key_from_environment(environ: Mapping[str, str] | None = None) -> bytes | None:
+    """The shared key, if one is configured; ``None`` if the variable is unset.
+
+    Set but unusable is an error rather than a quiet fallback to a private key,
+    because the fallback would look like it worked until the first handle
+    crossed between processes.
+    """
+    source = os.environ if environ is None else environ
+    text = source.get(KEY_VARIABLE)
+    if text is None:
+        return None
+    return parse_key(text)
 
 
 class HandleError(Exception):
@@ -155,11 +223,10 @@ def _b64decode(text: str) -> bytes:
 class Minter:
     """Mints and redeems handles under one key.
 
-    The key is generated per instance and never leaves the process. A
-    deployment that wanted handles to survive a restart, or to be redeemable by
-    a sibling process, would pass a shared key in — which is the whole change
-    required, and is why the key is a constructor argument rather than a module
-    global.
+    Without a key one is generated per instance and never leaves the process.
+    Passing the same key to several instances -- in separate processes, or the
+    same process after a restart -- makes each redeem the others' handles;
+    :func:`key_from_environment` is how the command line finds one.
     """
 
     def __init__(
@@ -290,11 +357,16 @@ class Minter:
 __all__ = [
     "DEFAULT_TTL_S",
     "HANDLE_VERSION",
+    "KEY_VARIABLE",
     "MAC_BYTES",
     "MAX_HANDLE_CHARS",
+    "MIN_KEY_BYTES",
+    "BadHandleKey",
     "HandleError",
     "HandleExpired",
     "HandleTooLarge",
     "HandleUnrecognised",
     "Minter",
+    "key_from_environment",
+    "parse_key",
 ]
