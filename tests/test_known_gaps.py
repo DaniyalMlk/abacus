@@ -22,7 +22,9 @@ actually imports to the module that defines it.
 from __future__ import annotations
 
 import ast
+import functools
 import importlib
+import importlib.util
 import io
 import json
 import pkgutil
@@ -132,11 +134,16 @@ def defining_modules() -> set[str]:
     """Every library module that defines something the server imports.
 
     An import from a submodule is owned by that submodule, or by the module a
-    class or function says defined it. An import from a library's root is owned
-    by whichever submodule's ``__all__`` declares the name; the libraries'
-    surface gates hold each root name to exactly one such owner. Resolving the
-    object rather than matching its name is what keeps ``price``, declared by
-    several moneyness modules, from counting against the wrong one.
+    class or function says defined it. Any other import from a library's root
+    -- a bare number, a tuple, a type alias, none of which records where it was
+    made -- is owned by the submodule whose source binds the name at top level.
+    Resolving the object rather than matching its name is what keeps ``price``,
+    declared by several moneyness modules, from counting against the wrong one.
+
+    The source is read rather than each module's ``__all__``, because the
+    published releases predate the libraries' declared-surface gates: in
+    ``tenor-curves`` 0.1.0 the root exports ``DEFAULT_DIGITS`` and
+    ``tenor.futures``, which defines it, does not declare it.
     """
     owners: set[str] = set()
     for path in SOURCE.rglob("*.py"):
@@ -158,18 +165,54 @@ def defining_modules() -> set[str]:
                 if callable(obj) and isinstance(getattr(obj, "__module__", None), str):
                     owners.add(obj.__module__)
                 elif node.module == library:
-                    owners.update(declaring_modules(library, alias.name))
+                    owners.update(modules_defining(library, alias.name))
     return owners
 
 
-def declaring_modules(library: str, name: str) -> set[str]:
+def top_level_bindings(source: str) -> set[str]:
+    """Names a module's own source binds at top level: definitions and assignments.
+
+    Imports are excluded, so a module that merely re-uses a name -- a command
+    line importing a default to print it -- is not taken for its owner.
+    """
+    bound: set[str] = set()
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            bound.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                bound.update(assigned_names(target))
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            bound.update(assigned_names(node.target))
+    return bound
+
+
+def assigned_names(target: ast.expr) -> set[str]:
+    """The names an assignment target binds: through tuples, never through ``a.b``."""
+    if isinstance(target, ast.Name):
+        return {target.id}
+    if isinstance(target, ast.Tuple | ast.List):
+        return {name for element in target.elts for name in assigned_names(element)}
+    if isinstance(target, ast.Starred):
+        return assigned_names(target.value)
+    return set()
+
+
+@functools.cache
+def bindings_by_module(library: str) -> dict[str, frozenset[str]]:
+    """Each submodule of an installed library, with what its source binds."""
     package = importlib.import_module(library)
-    found = set()
+    out: dict[str, frozenset[str]] = {}
     for info in pkgutil.iter_modules(package.__path__):
-        module = importlib.import_module(f"{library}.{info.name}")
-        if name in getattr(module, "__all__", ()):
-            found.add(module.__name__)
-    return found
+        spec = importlib.util.find_spec(f"{library}.{info.name}")
+        assert spec is not None and spec.origin is not None, info.name
+        source = Path(spec.origin).read_text(encoding="utf-8")
+        out[f"{library}.{info.name}"] = frozenset(top_level_bindings(source))
+    return out
+
+
+def modules_defining(library: str, name: str) -> set[str]:
+    return {module for module, bound in bindings_by_module(library).items() if name in bound}
 
 
 def fifty_six_capabilities_have_no_tool() -> None:
@@ -241,12 +284,40 @@ def test_the_section_ends_at_the_heading_that_follows_it() -> None:
 # --- the ownership probe, against cases built for it ---------------------- #
 
 
-def test_a_root_name_is_owned_by_the_module_that_declares_it() -> None:
-    """``tenor``'s root value imports resolve to a declaring submodule."""
-    for name in importlib.import_module("tenor").__all__:
-        if name == "__version__":
-            continue
-        assert declaring_modules("tenor", name), f"tenor.{name} has no declaring module"
+def test_every_root_name_the_server_could_import_has_a_defining_module() -> None:
+    """Whichever release is installed, every root export is bound somewhere."""
+    for library in sorted(LIBRARIES):
+        for name in importlib.import_module(library).__all__:
+            if name == "__version__":
+                continue
+            assert modules_defining(library, name), f"{library}.{name} is defined nowhere"
+
+
+def test_a_bare_number_is_owned_by_the_module_that_binds_it() -> None:
+    """``DEFAULT_DIGITS`` is bound in ``tenor.futures`` and only imported by the CLI."""
+    assert modules_defining("tenor", "DEFAULT_DIGITS") == {"tenor.futures"}
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("X = 1", {"X"}),
+        ("X: int = 1", {"X"}),
+        ("A, (B, C) = 1, (2, 3)", {"A", "B", "C"}),
+        ("A = B = 0", {"A", "B"}),
+        ("def f(): pass\nasync def g(): pass\nclass K: pass", {"f", "g", "K"}),
+        ("from .futures import DEFAULT_DIGITS\nimport math", set()),
+        ("X: int", set()),
+        ("first, *rest = range(3)", {"first", "rest"}),
+        ("settings.value = 1\ntable[0] = 2", set()),
+        ("if True:\n    HIDDEN = 1", set()),
+        ("def f():\n    LOCAL = 1", {"f"}),
+    ],
+)
+def test_the_binding_probe_against_source_written_for_it(
+    source: str, expected: set[str]
+) -> None:
+    assert top_level_bindings(source) == expected
 
 
 def test_the_probe_attributes_a_shared_function_name_correctly() -> None:
