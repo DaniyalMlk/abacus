@@ -642,3 +642,22 @@ by one worker was refused by the next and by the same worker after a restart.
 - [x] Three single-rule breaks, each caught by the test named for it: the
       families drawing their own keys, the command line ignoring the key, and
       a bad key falling back silently
+
+## Phase 29 — Known gaps, each held by a check
+
+Every sibling library carries a list of what it does not do with a predicate
+behind each line; the server did not.
+
+- [x] Four lines, all absences rather than refusals: no resources or prompts,
+      no progress against a progress token, no authorisation on HTTP, and the
+      fifty-six library capabilities that have no tool
+- [x] Each predicate talks to a server, over the transport the line is about,
+      or resolves what the server imports to the module that defines it, so a
+      shared name such as `moneyness.price` is not counted against Heston
+- [x] Ten breaks, each caught by the line it names: a resources capability, a
+      progress notification, an `Authorization` requirement, an import from an
+      unexposed module directly and through the library root, a reworded lead,
+      an unbacked bullet, a wrapped lead, one fewer unexposed entry, and a
+      heading inserted after the list
+- [x] A line considered and left out: that no further tool fits the listing
+      budget. The smallest tool would fit in what remains, so it is not true
