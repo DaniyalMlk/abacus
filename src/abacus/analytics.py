@@ -44,6 +44,7 @@ from moneyness import (
     zomma,
 )
 
+from .handles import Minter
 from .tools import DomainError, ToolRegistry
 
 #: Above this, a volatility is far more likely to be a percentage than a real
@@ -456,13 +457,25 @@ def register(registry: ToolRegistry) -> ToolRegistry:
     return registry
 
 
-def default_registry() -> ToolRegistry:
-    """A registry holding every tool this server exposes."""
+def default_registry(*, minter: Minter | None = None) -> ToolRegistry:
+    """A registry holding every tool this server exposes.
+
+    Every family that mints handles mints them under ``minter``, or under one
+    drawn here when none is given. One key per server, rather than one per
+    family, is what lets a deployment share it; the families tell their handles
+    apart by the kind each stamps into its payload, not by the key.
+    """
     from . import american, book, curves, execution, risk, validation, vol
 
+    shared = minter if minter is not None else Minter()
     built = register(ToolRegistry())
-    for module in (vol, american, book, risk, curves, execution, validation):
-        built = module.register(built)
+    built = vol.register(built)
+    built = american.register(built)
+    built = book.register(built, minter=shared)
+    built = risk.register(built, minter=shared)
+    built = curves.register(built, minter=shared)
+    built = execution.register(built)
+    built = validation.register(built)
     return built
 
 
