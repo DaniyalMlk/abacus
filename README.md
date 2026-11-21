@@ -814,6 +814,32 @@ rather than echoed, and `404` *with a JSON-RPC body* for an unknown method, whic
 is what lets a client tell a modern server that lacks the method from a legacy
 endpoint that was never there.
 
+## Known gaps
+
+What the server does not do. Each line is held by a test,
+`tests/test_known_gaps.py`, that calls the server and fails once the gap is
+closed, so a line cannot outlive the gap it describes. What the server refuses
+on purpose — an implausible input, a Greek at expiry, an older protocol shape —
+is documented beside the behaviour it protects and is not repeated here.
+
+- **The server offers tools, and no resources or prompts.** `server/discover`
+  declares the `tools` capability alone, and `resources/list`, `resources/read`,
+  `prompts/list`, `prompts/get` and `completion/complete` are each answered as an
+  unknown method.
+- **A tool call cannot report progress.** A request's `_meta.progressToken` is
+  read and validated, and nothing is ever sent against it: a call is answered by
+  its result and nothing before it, over stdio and over HTTP alike, however long
+  it takes.
+- **The HTTP transport has no authorisation.** A request is served with no
+  `Authorization` header and with a meaningless one. It binds to the loopback
+  interface unless told otherwise, and anything listening more widely belongs
+  behind something that authenticates.
+- **Fifty-six things the libraries do have no tool.** They are listed on the
+  documentation site's libraries page; each is built, tested and reachable by
+  importing its library, and nothing in the server calls into the modules that
+  hold them. The tool listing is close to the budget `tests/test_skill.py`
+  enforces, so exposing more is a decision about that budget.
+
 ## Development
 
 ```bash
