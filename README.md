@@ -162,6 +162,24 @@ abacus conform --stdio "uvx abacus-mcp stdio"
 
 It exits non-zero on a failure, so it works as a gate rather than a report.
 
+### More than one process
+
+A handle from `open_position_book`, `estimate_return_moments` or
+`bootstrap_discount_curve` is signed with a key the server draws when it starts,
+so by default it is redeemable only by the process that minted it, and only
+until that process stops. To run several workers behind one endpoint, or to keep
+handles working across a restart, give every process the same key:
+
+```bash
+export ABACUS_HANDLE_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+abacus http
+```
+
+The key is hexadecimal and at least 32 bytes. One that is set and unusable stops
+the server with exit status 2 rather than letting it fall back to a private key,
+which would look like it worked until the first handle moved between processes;
+the message describes the key's shape and never prints it.
+
 ## The tools
 
 | Tool | What it does |
@@ -726,16 +744,24 @@ across processes, since a handle minted by one worker is unknown to the next.
 So the handle *contains* the book: canonical JSON, compressed, and authenticated
 with a truncated HMAC-SHA256 that is checked in constant time before anything is
 decompressed. The server stores nothing and verifies everything, which disposes
-of all three problems at once.
+of the first two problems outright and of the third once the processes share a
+key: every process given the same `ABACUS_HANDLE_KEY` redeems every other's
+handles, which a stored book could not do without a shared store.
+
+Each handle also says what it holds — a position book, return moments or a
+discount curve — and every tool checks that before reading it, so with one key
+signing all three a curve handle given to a book tool is refused as
+`handle_wrong_kind` rather than parsed as a book.
 
 The trade is stated rather than buried. The payload is signed, not encrypted, so
 the caller can read it — acceptable because it is the caller's own book, and a
 reason nothing else may be put in there. It cannot be altered, because an edited
 handle fails its MAC. It is bounded in size, so a book too large to encode is
 refused when it is opened rather than minting something that fails on use. And
-the key lives for the life of the process, which is why a handle that fails its
-check is reported as *unrecognised* rather than expired: a caller seeing that
-after a working call has learned something true about the server.
+without a shared key the key lives for the life of the process, which is why a
+handle that fails its check is reported as *unrecognised* rather than expired: a
+caller seeing that after a working call has learned something true about the
+server.
 
 Books are therefore immutable. Amending one mints a new handle and leaves the
 old one working until it expires, and the result says so — the server holds no
