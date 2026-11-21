@@ -623,3 +623,22 @@ asked for.
       `/handle`, under one shared key so the check is actually reached
 - [x] The kind check confirmed to fail first: removing it fails exactly the
       three crossings into the book tools and the untyped book payload
+
+## Phase 28 — A handle outlives the process that minted it
+
+The design section said carrying the book inside the handle disposes of the
+problem that a stored book breaks across processes. It did not: every server
+drew its own key, and in fact three, one per family of tool, so a handle minted
+by one worker was refused by the next and by the same worker after a restart.
+
+- [x] One key per server, shared by the book, moments and curve tools, which
+      phase 27 made safe by having each family check the kind it is handed
+- [x] `ABACUS_HANDLE_KEY`, hexadecimal and at least 32 bytes, read by `stdio`
+      and `http` before anything is served
+- [x] A key that is set and unusable stops the server with exit status 2 and
+      a message giving its shape, never its value, rather than falling back
+- [x] Two launched `abacus stdio` processes: a book opened on one is described
+      by the other when they share a key, and refused when they do not
+- [x] Three single-rule breaks, each caught by the test named for it: the
+      families drawing their own keys, the command line ignoring the key, and
+      a bad key falling back silently
