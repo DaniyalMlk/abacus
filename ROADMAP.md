@@ -608,3 +608,18 @@ libraries under it were on the index, because nothing read the roadmap.
       alone, which stopped being true four libraries ago
 - [x] `main`'s roadmap and a duplicated phase number each confirmed to fail
       first
+
+## Phase 27 — A handle says what it holds
+
+The curve and moments handles stamped a kind into their payload and refused any
+other; the book handle did not. Separate keys per family hid it, because a
+foreign handle failed its MAC first. Under one key a moments handle given to
+`describe_position_book` was refused for a missing spot it had never been
+asked for.
+
+- [x] A book handle carries `position-book`, checked before the payload is
+      parsed, and dropped so the book read back is the book that was opened
+- [x] All six cross-family pairings refused as `handle_wrong_kind` at
+      `/handle`, under one shared key so the check is actually reached
+- [x] The kind check confirmed to fail first: removing it fails exactly the
+      three crossings into the book tools and the untyped book payload
