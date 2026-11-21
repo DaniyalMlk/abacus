@@ -80,6 +80,12 @@ from .tools import DomainError, ToolExecutionError, ToolRegistry
 #: rather than characters.
 MAX_LEGS = 64
 
+#: What a book handle says it holds. The curve and moments handles carry their
+#: own, and every family checks the one it is given, so a handle passed to the
+#: wrong tool is refused by name rather than read as whatever it happens to
+#: decode into.
+BOOK_KIND = "position-book"
+
 #: Most cells a scenario grid may contain. Twenty-one spot steps against eleven
 #: volatility steps is a finer grid than anybody reads, and the cap exists so a
 #: model cannot ask for a hundred thousand prices in one call.
@@ -588,7 +594,10 @@ class BookTools:
 
     def _mint(self, book: Book) -> str:
         try:
-            return self.minter.mint(book.to_dict())
+            # The kind belongs to the handle, not to the book: it sits beside the
+            # book's fields and is dropped on the way out, so the book a caller
+            # reads back is exactly the book they opened.
+            return self.minter.mint({"kind": BOOK_KIND, **book.to_dict()})
         except HandleTooLarge as exc:
             raise ToolExecutionError(
                 exc.message, kind="book_too_large", details=[{"size": exc.size, "limit": exc.limit}]
@@ -607,7 +616,25 @@ class BookTools:
                 kind=exc.kind,
                 details=[{"path": "/handle", "keyword": exc.kind, "message": exc.message}],
             ) from exc
-        return Book.from_dict(payload)
+        if payload.get("kind") != BOOK_KIND:
+            # Checked before the payload is parsed as a book. Parsing first would
+            # report the first book field the foreign payload lacks -- "spot must
+            # be a positive number" at /spot, for a caller who sent no spot.
+            raise ToolExecutionError(
+                "that handle does not hold a position book. A handle from "
+                "estimate_return_moments holds a covariance estimate and one from "
+                "bootstrap_discount_curve holds a discount curve; call "
+                "open_position_book to get one of these.",
+                kind="handle_wrong_kind",
+                details=[
+                    {
+                        "path": "/handle",
+                        "keyword": "handle_wrong_kind",
+                        "message": f"handle holds {payload.get('kind', 'something else')!r}",
+                    }
+                ],
+            )
+        return Book.from_dict({key: value for key, value in payload.items() if key != "kind"})
 
     # -- tool bodies ------------------------------------------------------
 
@@ -911,6 +938,7 @@ def register(registry: ToolRegistry, *, minter: Minter | None = None) -> ToolReg
 
 
 __all__ = [
+    "BOOK_KIND",
     "DEFAULT_SPOT_SHIFTS",
     "DEFAULT_VOL_SHIFTS",
     "GREEK_NAMES",
