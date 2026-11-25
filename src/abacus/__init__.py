@@ -34,7 +34,7 @@ from .protocol import (
     input_required,
     parse_message,
 )
-from .server import Server, capabilities
+from .server import Handler, NotificationHandler, Server, capabilities
 
 __version__ = "0.1.0"
 
@@ -50,6 +50,7 @@ __all__ = [
     "SUPPORTED_VERSIONS",
     "UNSUPPORTED_PROTOCOL_VERSION",
     "Capabilities",
+    "Handler",
     "HeaderMismatchError",
     "Implementation",
     "InternalError",
@@ -58,6 +59,7 @@ __all__ = [
     "MethodNotFound",
     "MissingRequiredClientCapabilityError",
     "Notification",
+    "NotificationHandler",
     "ParseError",
     "ProtocolError",
     "Request",

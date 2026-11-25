@@ -844,7 +844,7 @@ is documented beside the behaviour it protects and is not repeated here.
 
 ```bash
 pip install -e ".[dev]"
-pytest          # 923 tests
+pytest          # 1014 tests
 mypy --strict
 ruff check .
 ```

@@ -661,3 +661,27 @@ behind each line; the server did not.
       heading inserted after the list
 - [x] A line considered and left out: that no further tool fits the listing
       budget. The smallest tool would fit in what remains, so it is not true
+
+## Phase 30 — A server author can name what a handler is
+
+`Server.register` and `Server.method` take a `Handler`, and
+`Server.on_notification` a `NotificationHandler`. `abacus.server` declares both,
+and the curated root, which exists to carry what a server author needs, carried
+`Server` and neither of the types its registration methods are written in. The
+check that should have said so, from phase 25, read resolved hints, and
+resolving a hint expands an alias before anything can see it.
+
+- [x] `Handler` and `NotificationHandler` exported from the root
+- [x] Aliases read from source and compared by identity with what the root
+      binds, over every reachable signature and every field of a root class,
+      with the survey asserted to find the three the package defines
+- [x] The class walk entering a callable's parameter list, which
+      `typing.get_args` returns as a plain list: with the old walk,
+      `on_notification(handler: Callable[[Method], None])` passed with `Method`
+      absent from the root
+- [x] The probe's rules tested against source written for each
+- [x] Five breaks, each caught by the rule aimed at it: `Handler` dropped from
+      the root, a different object bound to its name, a class off the root
+      inside a callback on real code, the probe made blind to callback
+      parameters, and that blindness shown to let the real-code break through
+
